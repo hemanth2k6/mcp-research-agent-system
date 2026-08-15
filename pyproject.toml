@@ -38,6 +38,8 @@ include = ["mcp_research_agent_system*"]
 line-length = 100
 target-version = "py311"
 src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings

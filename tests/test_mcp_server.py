@@ -1,5 +1,6 @@
 """Tests for the MCP server tools."""
 
+import sys
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -78,7 +79,7 @@ def mock_arxiv_client(sample_papers):
 def server_params(test_settings):
     """Create StdioServerParameters for the test server."""
     return StdioServerParameters(
-        command="python",
+        command=sys.executable,
         args=["-m", "mcp_research_agent_system.mcp_server"],
         env={
             "DATABASE_PATH": test_settings.database_path,

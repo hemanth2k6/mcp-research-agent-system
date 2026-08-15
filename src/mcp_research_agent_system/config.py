@@ -26,3 +26,8 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     log_file: str = "logs/app.log"
+
+    # LLM (OpenAI-compatible)
+    llm_base_url: str = "http://localhost:20128/v1"
+    llm_api_key: str = "your-api-key-here"
+    llm_model: str = "gpt-4o-mini"
