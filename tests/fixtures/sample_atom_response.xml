@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+    <title>ArXiv Query: search_query=cat:cs.AI AND (machine learning)</title>
+    <id>http://arxiv.org/api/query/qid/unknown</id>
+    <updated>2024-01-15T00:00:00-05:00</updated>
+    <opensearch:totalResults xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">2</opensearch:totalResults>
+    <opensearch:startIndex xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">0</opensearch:startIndex>
+    <opensearch:itemsPerPage xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">2</opensearch:itemsPerPage>
+    <entry>
+        <id>http://arxiv.org/abs/2401.12345v1</id>
+        <updated>2024-01-10T12:00:00Z</updated>
+        <published>2024-01-09T12:00:00Z</published>
+        <title>Deep Learning for Robotics: A Survey</title>
+        <summary>This paper surveys recent advances in deep learning applied to robotics, covering perception, control, and planning. We discuss the challenges of sim-to-real transfer and present a taxonomy of methods.</summary>
+        <author>
+            <name>Alice Johnson</name>
+        </author>
+        <author>
+            <name>Bob Smith</name>
+        </author>
+        <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.AI"/>
+        <category term="cs.AI"/>
+        <category term="cs.RO"/>
+        <link title="pdf" href="http://arxiv.org/pdf/2401.12345v1" rel="related" type="application/pdf"/>
+        <link title="Abstract" href="http://arxiv.org/abs/2401.12345v1" rel="alternate" type="text/html"/>
+    </entry>
+    <entry>
+        <id>http://arxiv.org/abs/2401.67890v2</id>
+        <updated>2024-01-12T15:30:00Z</updated>
+        <published>2024-01-11T09:00:00Z</published>
+        <title>Reinforcement Learning in Large State Spaces</title>
+        <summary>We propose a novel algorithm for reinforcement learning that scales to large state spaces using function approximation and experience replay. Empirical results show improvements on benchmark tasks.</summary>
+        <author>
+            <name>Carol Williams</name>
+        </author>
+        <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG"/>
+        <category term="cs.LG"/>
+        <link title="pdf" href="http://arxiv.org/pdf/2401.67890v2" rel="related" type="application/pdf"/>
+        <link title="Abstract" href="http://arxiv.org/abs/2401.67890v2" rel="alternate" type="text/html"/>
+    </entry>
+</feed>
