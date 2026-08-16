@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mcp_research_agent_system.agents.graph import build_graph
+from mcp_research_agent_system.agents.planner import PlannerDecomposition
 from mcp_research_agent_system.agents.state import (
     ResearchState,
     create_initial_state,
@@ -47,8 +48,14 @@ def failed_query_state() -> ResearchState:
 
 def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
     """Run the graph and return (final_state, node_names_logged)."""
-    with patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log:
+    with (
+        patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
+        patch("mcp_research_agent_system.agents.graph.decompose_goal") as mock_decompose,
+    ):
         mock_log.log_event = MagicMock()
+        mock_decompose.return_value = PlannerDecomposition(
+            sub_queries=["sub-query 1", "sub-query 2", "sub-query 3"]
+        )
         graph = build_graph()
         result = graph.invoke(state)
         # Collect node names from log calls

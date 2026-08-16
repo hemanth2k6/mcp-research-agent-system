@@ -1,3 +1,8 @@
 """Custom exception hierarchy for the research agent system."""
 
-__all__ = []
+
+class PlannerError(Exception):
+    """Raised when the planner agent fails to decompose a research goal."""
+
+
+__all__ = ["PlannerError"]

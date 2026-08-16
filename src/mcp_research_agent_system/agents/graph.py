@@ -1,9 +1,7 @@
 """LangGraph state machine wiring the research agent nodes together.
 
 This module defines the control flow between the Planner, Researcher, Validator,
-and Synthesizer nodes. The node implementations are STUBS for now — they log
-execution and make minimal state updates so the graph is runnable end-to-end
-before any real agent logic is implemented.
+and Synthesizer nodes.
 """
 
 from typing import Any
@@ -11,6 +9,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from .. import logging_utils
+from .planner import decompose_goal
 from .state import ResearchState
 
 MAX_RESEARCHER_ATTEMPTS = 3
@@ -18,20 +17,53 @@ AGENT_NODE_EVENT = "agent_node"
 
 
 def planner_node(state: ResearchState) -> ResearchState:
-    """Stub planner node — logs execution and generates dummy sub-queries if none exist."""
+    """Planner node — decomposes the research goal into sub-queries on first entry."""
+    research_goal = state.get("research_goal", "")
     logging_utils.log_event(
         AGENT_NODE_EVENT,
-        {"node": "planner", "research_goal": state.get("research_goal", "")},
+        {"node": "planner", "research_goal": research_goal, "phase": "entry"},
     )
-    # If no sub_queries yet, create dummy ones for the graph to progress
+
+    # Only decompose if sub_queries not yet populated
     if not state.get("sub_queries"):
-        return {
-            **state,
-            "sub_queries": ["sub-query 1", "sub-query 2"],
-            "current_query_index": 0,
-            "researcher_attempts": 0,
-            "validation_status": "pending",
-        }
+        try:
+            decomposition = decompose_goal(research_goal)
+            sub_queries = decomposition.sub_queries
+            logging_utils.log_event(
+                AGENT_NODE_EVENT,
+                {
+                    "node": "planner",
+                    "phase": "decomposed",
+                    "research_goal": research_goal,
+                    "sub_queries": sub_queries,
+                    "sub_query_count": len(sub_queries),
+                },
+            )
+            return {
+                **state,
+                "sub_queries": sub_queries,
+                "current_query_index": 0,
+                "researcher_attempts": 0,
+                "validation_status": "pending",
+            }
+        except Exception as e:
+            # Log the error and re-raise to halt the graph
+            logging_utils.log_event(
+                AGENT_NODE_EVENT,
+                {
+                    "node": "planner",
+                    "phase": "error",
+                    "research_goal": research_goal,
+                    "error": str(e),
+                },
+            )
+            raise
+
+    # Already has sub_queries — pass through
+    logging_utils.log_event(
+        AGENT_NODE_EVENT,
+        {"node": "planner", "phase": "passthrough", "sub_queries": state.get("sub_queries")},
+    )
     return state
 
 
