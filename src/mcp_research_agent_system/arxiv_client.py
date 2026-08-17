@@ -40,7 +40,12 @@ class ArxivClient:
     async def __aenter__(self) -> "ArxivClient":
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object | None,
+    ) -> None:
         await self.close()
 
     async def close(self) -> None:
@@ -73,6 +78,17 @@ class ArxivClient:
         Returns:
             List of parsed Paper objects
         """
+        """Search arXiv API and return parsed papers.
+
+        Args:
+            query: Search query string
+            category: arXiv category to filter (e.g., 'cs.AI')
+            max_results: Maximum number of results to return
+            date_from: Only return papers published after this date
+
+        Returns:
+            List of parsed Paper objects
+        """
         await self._rate_limit()
 
         # Build search query
@@ -80,7 +96,7 @@ class ArxivClient:
         if category:
             search_query = f"cat:{category} AND ({query})"
 
-        params = {
+        params: dict[str, str | int] = {
             "search_query": search_query,
             "max_results": max_results,
             "start": 0,
@@ -122,7 +138,7 @@ class ArxivClient:
             arxiv_id = arxiv_url.split("/abs/")[-1]
 
             title_elem = entry.find("atom:title", ATOM_NS)
-            title = title_elem.text.strip() if title_elem is not None else ""
+            title = title_elem.text.strip() if title_elem is not None and title_elem.text else ""
 
             # Extract authors
             authors: list[str] = []
@@ -132,7 +148,7 @@ class ArxivClient:
                     authors.append(name_elem.text.strip())
 
             abstract_elem = entry.find("atom:summary", ATOM_NS)
-            abstract = abstract_elem.text.strip() if abstract_elem is not None else ""
+            abstract = abstract_elem.text.strip() if abstract_elem is not None and abstract_elem.text else ""
 
             # Extract category (primary category)
             category = ""

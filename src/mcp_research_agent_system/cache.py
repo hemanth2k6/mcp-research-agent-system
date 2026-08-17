@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import sqlite3
 from datetime import datetime, timedelta
+from typing import Any
 
 from .arxiv_client import ArxivClient, Paper
 from .config import Settings
@@ -33,7 +35,7 @@ def _hash_query_params(normalized: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def _paper_to_db_row(paper: Paper, fetched_at: str) -> dict:
+def _paper_to_db_row(paper: Paper, fetched_at: str) -> dict[str, Any]:
     """Convert a Paper object to a database row dict."""
     return {
         "arxiv_id": paper.arxiv_id,
@@ -48,7 +50,7 @@ def _paper_to_db_row(paper: Paper, fetched_at: str) -> dict:
     }
 
 
-def _db_row_to_paper(row) -> Paper:
+def _db_row_to_paper(row: sqlite3.Row) -> Paper:
     """Convert a database row to a Paper object."""
     return Paper(
         arxiv_id=row["arxiv_id"],
@@ -62,7 +64,7 @@ def _db_row_to_paper(row) -> Paper:
     )
 
 
-def _upsert_paper(conn, paper: Paper, fetched_at: str) -> None:
+def _upsert_paper(conn: sqlite3.Connection, paper: Paper, fetched_at: str) -> None:
     """Insert or update a paper in the database."""
     row = _paper_to_db_row(paper, fetched_at)
     conn.execute(
@@ -78,7 +80,7 @@ def _upsert_paper(conn, paper: Paper, fetched_at: str) -> None:
     )
 
 
-def _get_cached_papers(conn, arxiv_ids: list[str]) -> list[Paper]:
+def _get_cached_papers(conn: sqlite3.Connection, arxiv_ids: list[str]) -> list[Paper]:
     """Retrieve papers from the papers table by their arxiv_ids."""
     placeholders = ",".join("?" for _ in arxiv_ids)
     rows = conn.execute(
@@ -143,14 +145,17 @@ async def cached_search(
             client = ArxivClient(settings)
 
         try:
-            papers = await client.search(
-                query=query,
-                category=category,
-                max_results=max_results,
-                date_from=date_from,
-            )
+            if client is not None:
+                papers = await client.search(
+                    query=query,
+                    category=category,
+                    max_results=max_results,
+                    date_from=date_from,
+                )
+            else:
+                papers = []
         finally:
-            if own_client:
+            if own_client and client is not None:
                 await client.close()
 
         # Upsert papers and cache entry

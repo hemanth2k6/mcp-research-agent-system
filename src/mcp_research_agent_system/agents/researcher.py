@@ -150,7 +150,13 @@ async def run_research(sub_query: str, settings: Settings | None = None) -> Rese
                 )
 
                 if search_result.is_error:
-                    error_text = search_result.content[0].text if search_result.content else "Unknown error"
+                    error_text = "Unknown error"
+                    if search_result.content:
+                        first_content = search_result.content[0]
+                        # Content could be TextContent, ImageContent, AudioContent, etc.
+                        # Only TextContent has .text attribute
+                        if hasattr(first_content, "text"):
+                            error_text = first_content.text
                     raise ResearcherError(
                         f"search_papers returned error: {error_text}",
                         {"sub_query": sub_query, "tool": "search_papers", "error": error_text},
@@ -200,6 +206,7 @@ async def run_research(sub_query: str, settings: Settings | None = None) -> Rese
                                 "content": [
                                     c.model_dump(mode="json") if hasattr(c, "model_dump") else str(c)
                                     for c in cached_result.content
+                                    if c is not None
                                 ],
                             },
                         }

@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from mcp_research_agent_system.arxiv_client import Paper
-from mcp_research_agent_system.cache import cached_search, init_db
+from mcp_research_agent_system.cache import cached_search
 from mcp_research_agent_system.config import Settings
-from mcp_research_agent_system.db.connection import get_connection
+from mcp_research_agent_system.db.connection import get_connection, init_db
 
 
 @pytest.fixture

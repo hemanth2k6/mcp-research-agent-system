@@ -1,6 +1,7 @@
 """Database connection module for SQLite with WAL mode and schema initialization."""
 
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -32,7 +33,7 @@ def init_db(settings: Settings) -> None:
 
 
 @contextmanager
-def get_connection(settings: Settings):
+def get_connection(settings: Settings) -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections with proper configuration."""
     db_path = get_db_path(settings)
     conn = sqlite3.connect(db_path)

@@ -3,9 +3,10 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 
-def log_event(event_type: str, payload: dict) -> None:
+def log_event(event_type: str, payload: dict[str, Any]) -> None:
     """Append a structured JSON log event to logs/trace.jsonl.
 
     Args:
@@ -27,7 +28,7 @@ def log_event(event_type: str, payload: dict) -> None:
         f.write(json.dumps(event) + "\n")
 
 
-def log_tool_call(tool_name: str, input_data: dict) -> None:
+def log_tool_call(tool_name: str, input_data: dict[str, Any]) -> None:
     """Log a tool call event."""
     log_event(
         "tool_call",
@@ -38,7 +39,7 @@ def log_tool_call(tool_name: str, input_data: dict) -> None:
     )
 
 
-def log_tool_result(tool_name: str, output_summary: dict, duration_ms: float) -> None:
+def log_tool_result(tool_name: str, output_summary: dict[str, Any], duration_ms: float) -> None:
     """Log a tool result event."""
     log_event(
         "tool_result",
@@ -50,7 +51,7 @@ def log_tool_result(tool_name: str, output_summary: dict, duration_ms: float) ->
     )
 
 
-def log_tool_error(tool_name: str, error: str, input_data: dict) -> None:
+def log_tool_error(tool_name: str, error: str, input_data: dict[str, Any]) -> None:
     """Log a tool error event."""
     log_event(
         "tool_error",

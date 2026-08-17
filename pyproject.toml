@@ -76,4 +76,18 @@ warn_unused_configs = true
 disallow_untyped_defs = true
 namespace_packages = true
 strict = true
-files = ["src/mcp_research_agent_system"]
+files = ["src/mcp_research_agent_system", "tests"]
+
+# Tests are intentionally held to a looser standard than src: untyped test
+# helpers and broad exception assertions are fine here. mypy still type-checks
+# the bodies of typed functions so real mistakes are still caught.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+warn_return_any = false
+no_implicit_reexport = false
+disallow_any_generics = false
+warn_unused_ignores = false
