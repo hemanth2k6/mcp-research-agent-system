@@ -1,5 +1,6 @@
 """Tests for the LangGraph state machine skeleton."""
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -46,7 +47,7 @@ def failed_query_state() -> ResearchState:
     return state
 
 
-def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
+async def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
     """Run the graph and return (final_state, node_names_logged)."""
     with (
         patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
@@ -57,7 +58,7 @@ def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
             sub_queries=["sub-query 1", "sub-query 2", "sub-query 3"]
         )
         graph = build_graph()
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         # Collect node names from log calls
         logged_nodes = []
         for call in mock_log.log_event.call_args_list:
@@ -79,7 +80,7 @@ def test_build_graph_returns_compiled_graph():
 
 def test_graph_runs_empty_state_to_end(empty_state):
     """Test graph terminates on empty state (no sub-queries -> synthesizer -> END)."""
-    result, logged_nodes = _run_graph_and_get_logs(empty_state)
+    result, logged_nodes = asyncio.run(_run_graph_and_get_logs(empty_state))
     # planner, researcher, validator, synthesizer should all run
     assert "planner" in logged_nodes
     assert "researcher" in logged_nodes
@@ -91,7 +92,7 @@ def test_graph_runs_empty_state_to_end(empty_state):
 
 def test_graph_runs_single_query(single_query_state):
     """Test graph with one valid query routes planner->researcher->validator->synthesizer."""
-    result, logged_nodes = _run_graph_and_get_logs(single_query_state)
+    result, logged_nodes = asyncio.run(_run_graph_and_get_logs(single_query_state))
     # Validator sees valid + no more queries -> synthesizer
     assert "planner" in logged_nodes
     assert "researcher" in logged_nodes
@@ -104,7 +105,7 @@ def test_graph_runs_single_query(single_query_state):
 
 def test_graph_runs_multi_query(multi_query_state):
     """Test graph with multiple valid queries advances through all then synthesizes."""
-    result, logged_nodes = _run_graph_and_get_logs(multi_query_state)
+    result, logged_nodes = asyncio.run(_run_graph_and_get_logs(multi_query_state))
     # Should hit researcher at least once, validator, and synthesizer
     assert "planner" in logged_nodes
     assert "researcher" in logged_nodes
@@ -116,7 +117,7 @@ def test_graph_runs_multi_query(multi_query_state):
 
 def test_graph_handles_failed_query(failed_query_state):
     """Test invalid + max attempts -> synthesizer without infinite loop."""
-    result, logged_nodes = _run_graph_and_get_logs(failed_query_state)
+    result, logged_nodes = asyncio.run(_run_graph_and_get_logs(failed_query_state))
     assert "planner" in logged_nodes
     assert "researcher" in logged_nodes
     assert "validator" in logged_nodes
@@ -130,7 +131,7 @@ def test_graph_does_not_infinite_loop_on_invalid_retry():
     state["validation_status"] = "invalid"
     state["researcher_attempts"] = 1  # < MAX, should retry once then exhaust
 
-    result, logged_nodes = _run_graph_and_get_logs(state)
+    result, logged_nodes = asyncio.run(_run_graph_and_get_logs(state))
     # Should not loop forever — eventually reaches synthesizer
     assert "synthesizer" in logged_nodes
     # Researcher should appear at most MAX+1 times (initial + retries)

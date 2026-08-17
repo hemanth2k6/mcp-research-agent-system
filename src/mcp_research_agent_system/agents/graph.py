@@ -9,7 +9,9 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from .. import logging_utils
+from ..config import Settings
 from .planner import decompose_goal
+from .researcher import ResearcherError, run_research
 from .state import ResearchState
 
 MAX_RESEARCHER_ATTEMPTS = 3
@@ -67,29 +69,87 @@ def planner_node(state: ResearchState) -> ResearchState:
     return state
 
 
-def researcher_node(state: ResearchState) -> ResearchState:
-    """Stub researcher node — logs execution and simulates finding papers."""
+async def researcher_node(state: ResearchState) -> ResearchState:
+    """Researcher node — calls MCP server to search papers for the current sub-query."""
     idx = state.get("current_query_index", 0)
     sub_queries = state.get("sub_queries", [])
     query = sub_queries[idx] if idx < len(sub_queries) else ""
     attempts = state.get("researcher_attempts", 0)
+
     logging_utils.log_event(
         AGENT_NODE_EVENT,
         {
             "node": "researcher",
+            "phase": "entry",
             "current_query_index": idx,
             "query": query,
             "attempt": attempts,
         },
     )
-    # Simulate researcher output - add some dummy papers
-    return {
-        **state,
-        "researcher_output": [
-            {"arxiv_id": f"dummy.{idx}.{attempts}", "title": f"Paper for {query}"}
-        ],
-        "researcher_attempts": attempts + 1,
-    }
+
+    if not query:
+        logging_utils.log_event(
+            AGENT_NODE_EVENT,
+            {
+                "node": "researcher",
+                "phase": "error",
+                "error": "No sub-query available at current index",
+                "current_query_index": idx,
+                "sub_queries": sub_queries,
+            },
+        )
+        return {
+            **state,
+            "researcher_output": [],
+            "researcher_attempts": attempts + 1,
+            "error": "No sub-query available at current index",
+        }
+
+    settings = Settings()
+
+    try:
+        result = await run_research(query, settings)
+
+        logging_utils.log_event(
+            AGENT_NODE_EVENT,
+            {
+                "node": "researcher",
+                "phase": "success",
+                "current_query_index": idx,
+                "query": query,
+                "paper_count": len(result.papers),
+                "cached_summary_count": len(result.cached_summaries),
+                "raw_tool_calls": result.raw_tool_calls,
+            },
+        )
+
+        # Convert PaperResult models to dict for state storage
+        papers_as_dict = [p.model_dump(mode="json") for p in result.papers]
+
+        return {
+            **state,
+            "researcher_output": papers_as_dict,
+            "researcher_attempts": attempts + 1,
+        }
+
+    except ResearcherError as e:
+        logging_utils.log_event(
+            AGENT_NODE_EVENT,
+            {
+                "node": "researcher",
+                "phase": "error",
+                "current_query_index": idx,
+                "query": query,
+                "error": str(e),
+                "details": e.details,
+            },
+        )
+        return {
+            **state,
+            "researcher_output": [],
+            "researcher_attempts": attempts + 1,
+            "error": str(e),
+        }
 
 
 def validator_node(state: ResearchState) -> ResearchState:
