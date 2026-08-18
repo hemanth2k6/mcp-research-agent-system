@@ -10,8 +10,8 @@ from langgraph.graph import END, START, StateGraph
 
 from .. import logging_utils
 from ..config import Settings
-from .planner import decompose_goal
-from .researcher import ResearcherError, run_research
+from .planner import decompose_goal, validate_research_output
+from .researcher import PaperResult, ResearcherError, ResearchResult, run_research
 from .state import ResearchState
 
 MAX_RESEARCHER_ATTEMPTS = 3
@@ -129,7 +129,7 @@ async def researcher_node(state: ResearchState) -> ResearchState:
         return {
             **state,
             "researcher_output": papers_as_dict,
-            "researcher_attempts": attempts + 1,
+            # researcher_attempts incremented by validator_node on retry
         }
 
     except ResearcherError as e:
@@ -147,58 +147,190 @@ async def researcher_node(state: ResearchState) -> ResearchState:
         return {
             **state,
             "researcher_output": [],
-            "researcher_attempts": attempts + 1,
+            # researcher_attempts incremented by validator_node on retry
             "error": str(e),
         }
 
 
-def validator_node(state: ResearchState) -> ResearchState:
-    """Stub validator node — logs execution, advances state on valid, retries on invalid."""
-    status = state.get("validation_status", "pending")
-    attempts = state.get("researcher_attempts", 0)
+async def validator_node(state: ResearchState) -> ResearchState:
+    """Validator node — validates researcher output for the current sub-query.
+
+    Calls validate_research_output() which:
+    1. Runs heuristic checks (empty papers, token overlap) - fast, no LLM
+    2. Falls back to LLM judge for ambiguous cases
+    3. Returns ValidationOutcome with is_valid, reason, and revised_query if invalid
+
+    If invalid and attempts < MAX, updates current_sub_query to revised_query
+    and loops back to researcher_node.
+    """
     idx = state.get("current_query_index", 0)
     sub_queries = state.get("sub_queries", [])
+    attempts = state.get("researcher_attempts", 0)
+    researcher_output = state.get("researcher_output", [])
+
+    query = sub_queries[idx] if idx < len(sub_queries) else ""
 
     logging_utils.log_event(
         AGENT_NODE_EVENT,
         {
             "node": "validator",
-            "validation_status": status,
+            "phase": "entry",
             "current_query_index": idx,
+            "query": query,
             "attempts": attempts,
+            "paper_count": len(researcher_output),
         },
     )
 
-    # Handle "valid" status: advance to next query or stay for synthesizer
-    if status == "valid":
+    if not query:
+        logging_utils.log_event(
+            AGENT_NODE_EVENT,
+            {
+                "node": "validator",
+                "phase": "error",
+                "error": "No sub-query available at current index",
+                "current_query_index": idx,
+                "sub_queries": sub_queries,
+            },
+        )
+        return {
+            **state,
+            "validation_status": "invalid",
+            "error": "No sub-query available at current index",
+        }
+
+    # Convert researcher_output (list of dicts) back to ResearchResult for validation
+    papers = []
+    for p in researcher_output:
+        paper = PaperResult(
+            arxiv_id=p.get("arxiv_id", ""),
+            title=p.get("title", ""),
+            authors=p.get("authors", []),
+            abstract=p.get("abstract", ""),
+            category=p.get("category", ""),
+            published_date=p.get("published_date", ""),
+            updated_date=p.get("updated_date", ""),
+            pdf_url=p.get("pdf_url", ""),
+        )
+        papers.append(paper)
+
+    research_result = ResearchResult(
+        sub_query=query,
+        papers=papers,
+        cached_summaries=[],
+        raw_tool_calls=[],
+    )
+
+    # Run validation
+    validation_result = await validate_research_output(query, research_result)
+
+    # Log the full validation decision
+    log_payload = {
+        "node": "validator",
+        "phase": "validation_result",
+        "current_query_index": idx,
+        "query": query,
+        "attempts": attempts,
+        "is_valid": validation_result.is_valid,
+        "reason": validation_result.reason,
+        "heuristic_used": validation_result.reason.startswith("Research returned") or validation_result.reason.startswith("Papers have"),
+    }
+
+    if validation_result.revised_query:
+        log_payload["revised_query"] = validation_result.revised_query
+        log_payload["revised_query_changed"] = validation_result.revised_query != query
+
+    logging_utils.log_event(AGENT_NODE_EVENT, log_payload)
+
+    if validation_result.is_valid:
+        # Valid result - accumulate findings and advance
+        validated_findings = state.get("validated_findings", []) + researcher_output
+
         if idx + 1 < len(sub_queries):
             # More queries: advance to next, reset attempts
+            logging_utils.log_event(
+                AGENT_NODE_EVENT,
+                {
+                    "node": "validator",
+                    "phase": "valid_advance",
+                    "next_query_index": idx + 1,
+                    "validated_findings_count": len(validated_findings),
+                },
+            )
             return {
                 **state,
                 "validation_status": "pending",  # Reset for next query's validation
                 "current_query_index": idx + 1,
                 "researcher_attempts": 0,
+                "validated_findings": validated_findings,
             }
         else:
             # Last query was valid: keep valid status, don't advance (router will go to synthesizer)
-            return state
-
-    # Handle "pending" status: mark as valid and advance state
-    if status == "pending":
-        if idx + 1 < len(sub_queries):
-            # More queries: advance to next, reset attempts
+            logging_utils.log_event(
+                AGENT_NODE_EVENT,
+                {
+                    "node": "validator",
+                    "phase": "valid_done",
+                    "validated_findings_count": len(validated_findings),
+                    "going_to": "synthesizer",
+                },
+            )
             return {
                 **state,
                 "validation_status": "valid",
-                "current_query_index": idx + 1,
-                "researcher_attempts": 0,
+                "validated_findings": validated_findings,
             }
-        else:
-            # Last query: mark valid, don't advance (will go to synthesizer)
-            return {**state, "validation_status": "valid"}
 
-    # If invalid/failed, return as-is (router will handle retry or exhaustion)
-    return state
+    # Invalid result
+    if attempts < MAX_RESEARCHER_ATTEMPTS:
+        # Retry with revised query
+        revised_query = validation_result.revised_query or query
+        logging_utils.log_event(
+            AGENT_NODE_EVENT,
+            {
+                "node": "validator",
+                "phase": "invalid_retry",
+                "current_query_index": idx,
+                "attempt": attempts + 1,
+                "max_attempts": MAX_RESEARCHER_ATTEMPTS,
+                "original_query": query,
+                "revised_query": revised_query,
+                "reason": validation_result.reason,
+            },
+        )
+
+        # Update the current sub-query in state to the revised query
+        new_sub_queries = list(sub_queries)
+        new_sub_queries[idx] = revised_query
+
+        return {
+            **state,
+            "validation_status": "invalid",
+            "sub_queries": new_sub_queries,
+            "researcher_attempts": attempts + 1,
+        }
+
+    # Exhausted attempts - proceed to synthesizer with what we have
+    logging_utils.log_event(
+        AGENT_NODE_EVENT,
+        {
+            "node": "validator",
+            "phase": "invalid_exhausted",
+            "current_query_index": idx,
+            "attempts": attempts,
+            "max_attempts": MAX_RESEARCHER_ATTEMPTS,
+            "query": query,
+            "reason": validation_result.reason,
+            "going_to": "synthesizer",
+            "note": "max attempts reached, proceeding with partial results",
+        },
+    )
+
+    return {
+        **state,
+        "validation_status": "invalid",
+        "error": f"Validation failed after {attempts} attempts: {validation_result.reason}",
+    }
 
 
 def synthesizer_node(state: ResearchState) -> ResearchState:
