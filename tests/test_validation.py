@@ -216,13 +216,27 @@ class TestValidatorNodeIntegration:
 
         run_research_mock = AsyncMock(side_effect=results_sequence)
 
+        # Mock synthesizer LLM
+        from mcp_research_agent_system.agents.synthesizer import SynthesizedReport
+        mock_synthesizer_structured = AsyncMock()
+        mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
+            report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+        ))
+
+        def synthesizer_get_llm():
+            mock_llm = MagicMock()
+            mock_llm.with_structured_output = MagicMock(return_value=mock_synthesizer_structured)
+            return mock_llm
+
         with patch(
             "mcp_research_agent_system.agents.graph.run_research", run_research_mock
         ), patch(
             "mcp_research_agent_system.agents.graph.decompose_goal"
         ) as mock_decompose, patch(
             "mcp_research_agent_system.agents.graph.logging_utils"
-        ) as mock_log:
+        ) as mock_log, patch(
+            "mcp_research_agent_system.agents.synthesizer.get_llm", side_effect=synthesizer_get_llm
+        ):
             mock_log.log_event = MagicMock()
             mock_decompose.return_value = MagicMock(sub_queries=["quantum error correction"])
 

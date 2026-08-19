@@ -108,16 +108,61 @@ async def test_run_research_integration(seeded_settings):
 
 
 @pytest.mark.asyncio
-async def test_run_research_no_results(seeded_settings):
-    """Test run_research returns empty list when no papers found for unique query."""
-    result = await run_research("nonexistent topic xyz123 unique", seeded_settings)
+async def test_run_research_no_results(test_settings):
+    """Test run_research handles empty results from search_papers tool.
+
+    This is tested at the handler level in test_mcp_server.py::test_search_papers_empty_result.
+    Here we verify the researcher handles empty results gracefully by mocking the
+    entire subprocess interaction.
+    """
+    from unittest.mock import AsyncMock
+
+    from mcp import types
+
+    # Mock the stdio_client and ClientSession to return empty results
+    mock_session = AsyncMock()
+    mock_session.initialize = AsyncMock()
+
+    # Create a successful empty search_papers result
+    empty_result = types.CallToolResult(
+        content=[types.TextContent(type="text", text="")],
+        structured_content={"papers": []},
+        is_error=False
+    )
+
+    # Create a successful get_cached_summary result
+    empty_cached_result = types.CallToolResult(
+        content=[types.TextContent(type="text", text="")],
+        structured_content={"cached_summaries": []},
+        is_error=False
+    )
+
+    # Return empty for search_papers, empty for get_cached_summary
+    mock_session.call_tool = AsyncMock(side_effect=[empty_result, empty_cached_result])
+
+    # Mock the async context managers
+    mock_read = AsyncMock()
+    mock_write = AsyncMock()
+    mock_stdio_ctx = AsyncMock()
+    mock_stdio_ctx.__aenter__.return_value = (mock_read, mock_write)
+    mock_stdio_ctx.__aexit__.return_value = False
+
+    mock_session_ctx = AsyncMock()
+    mock_session_ctx.__aenter__.return_value = mock_session
+    mock_session_ctx.__aexit__.return_value = False
+
+    with patch(
+        "mcp_research_agent_system.agents.researcher.stdio_client",
+        return_value=mock_stdio_ctx,
+    ), patch(
+        "mcp_research_agent_system.agents.researcher.ClientSession",
+        return_value=mock_session_ctx,
+    ):
+        result = await run_research("nonexistent topic xyz123 unique", test_settings)
 
     assert isinstance(result, ResearchResult)
     assert result.sub_query == "nonexistent topic xyz123 unique"
-    # This won't be in the seeded cache, so it will hit arXiv live (mocked via the module)
-    # but with a unique query the client mock returns sample_papers regardless of query.
-    # If arXiv were real, this would be empty. With mock we get samples back.
-    assert len(result.papers) >= 0  # Should not crash
+    assert len(result.papers) == 0
     assert len(result.raw_tool_calls) >= 1
 
 

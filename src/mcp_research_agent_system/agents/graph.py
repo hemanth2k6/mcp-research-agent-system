@@ -13,6 +13,7 @@ from ..config import Settings
 from .planner import decompose_goal, validate_research_output
 from .researcher import PaperResult, ResearcherError, ResearchResult, run_research
 from .state import ResearchState
+from .synthesizer import synthesize_report
 
 MAX_RESEARCHER_ATTEMPTS = 3
 AGENT_NODE_EVENT = "agent_node"
@@ -333,23 +334,56 @@ async def validator_node(state: ResearchState) -> ResearchState:
     }
 
 
-def synthesizer_node(state: ResearchState) -> ResearchState:
-    """Stub synthesizer node — logs execution and creates final report."""
+async def synthesizer_node(state: ResearchState) -> ResearchState:
+    """Synthesizer node — turns accumulated validated findings into a final report.
+
+    Calls synthesize_report() with the accumulated state.validated_findings and
+    research_goal, stores the result in state.final_report, and logs input/output.
+    """
+    validated_findings = state.get("validated_findings", [])
+    research_goal = state.get("research_goal", "")
+
     logging_utils.log_event(
         AGENT_NODE_EVENT,
         {
             "node": "synthesizer",
-            "validated_findings_count": len(state.get("validated_findings", [])),
+            "phase": "entry",
+            "validated_findings_count": len(validated_findings),
+            "research_goal": research_goal,
         },
     )
-    # Accumulate findings and generate dummy report
-    new_findings = state.get("validated_findings", []) + state.get("researcher_output", [])
-    return {
-        **state,
-        "validated_findings": new_findings,
-        "final_report": f"Synthesized report from {len(new_findings)} findings",
-        "error": state.get("error"),
-    }
+
+    try:
+        final_report = await synthesize_report(research_goal, validated_findings)
+
+        logging_utils.log_event(
+            AGENT_NODE_EVENT,
+            {
+                "node": "synthesizer",
+                "phase": "success",
+                "report_length": len(final_report),
+                "validated_findings_count": len(validated_findings),
+            },
+        )
+
+        return {
+            **state,
+            "final_report": final_report,
+            "error": state.get("error"),
+        }
+
+    except Exception as e:
+        # Log the error and re-raise to halt the graph
+        logging_utils.log_event(
+            AGENT_NODE_EVENT,
+            {
+                "node": "synthesizer",
+                "phase": "error",
+                "validated_findings_count": len(validated_findings),
+                "error": str(e),
+            },
+        )
+        raise
 
 
 def _route_after_validator(state: ResearchState) -> str:

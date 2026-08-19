@@ -1,7 +1,7 @@
 """Tests for the LangGraph state machine skeleton."""
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -49,9 +49,45 @@ def failed_query_state() -> ResearchState:
 
 async def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
     """Run the graph and return (final_state, node_names_logged)."""
+    from mcp_research_agent_system.agents.planner import ValidationOutcome
+    from mcp_research_agent_system.agents.synthesizer import SynthesizedReport
+
+    # Create a MagicMock for the LLM (not AsyncMock) so with_structured_output works as a regular method
+    mock_llm = MagicMock()
+
+    # For synthesizer - structured output
+    mock_synthesizer_structured = AsyncMock()
+    mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
+        report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+    ))
+
+    # For planner - need to mock invoke for fallback
+    mock_planner_response = MagicMock()
+    mock_planner_response.content = '{"sub_queries": ["sub-query 1", "sub-query 2", "sub-query 3"]}'
+    mock_llm.invoke = MagicMock(return_value=mock_planner_response)
+
+    # For validator - mock LLM judge structured output
+    mock_validator_structured = AsyncMock()
+    mock_validator_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
+        is_valid=True,
+        reason="Papers are relevant to the sub-query",
+        revised_query=None,
+    ))
+
+    def with_structured_output_side_effect(model_class):
+        if model_class.__name__ == "SynthesizedReport":
+            return mock_synthesizer_structured
+        elif model_class.__name__ == "ValidationOutcome":
+            return mock_validator_structured
+        return AsyncMock()
+
+    mock_llm.with_structured_output = MagicMock(side_effect=with_structured_output_side_effect)
+
     with (
         patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
         patch("mcp_research_agent_system.agents.graph.decompose_goal") as mock_decompose,
+        patch("mcp_research_agent_system.agents.synthesizer.get_llm", return_value=mock_llm),
+        patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm),
     ):
         mock_log.log_event = MagicMock()
         mock_decompose.return_value = PlannerDecomposition(
