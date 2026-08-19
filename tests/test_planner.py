@@ -217,12 +217,14 @@ class TestPlannerNodeIntegration:
         with pytest.raises(PlannerError):
             planner_node(state)
 
-        # Should have logged entry and error
-        assert mock_log.log_event.call_count == 2
-        entry_call = mock_log.log_event.call_args_list[0]
-        error_call = mock_log.log_event.call_args_list[1]
-        assert entry_call.args[1]["phase"] == "entry"
-        assert error_call.args[1]["phase"] == "error"
+        # Should have logged entry and error using new logging helpers
+        assert mock_log.log_node_entry.call_count == 1
+        assert mock_log.log_node_error.call_count == 1
+        entry_call = mock_log.log_node_entry.call_args_list[0]
+        error_call = mock_log.log_node_error.call_args_list[0]
+        assert entry_call.args[0] == "planner"
+        assert error_call.args[0] == "planner"
+        assert "Decomposition failed" in error_call.args[1]
 
 
 if __name__ == "__main__":

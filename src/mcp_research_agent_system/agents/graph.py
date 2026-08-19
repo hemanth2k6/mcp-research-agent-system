@@ -4,7 +4,7 @@ This module defines the control flow between the Planner, Researcher, Validator,
 and Synthesizer nodes.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
@@ -16,88 +16,82 @@ from .state import ResearchState
 from .synthesizer import synthesize_report
 
 MAX_RESEARCHER_ATTEMPTS = 3
-AGENT_NODE_EVENT = "agent_node"
 
 
 def planner_node(state: ResearchState) -> ResearchState:
     """Planner node — decomposes the research goal into sub-queries on first entry."""
-    research_goal = state.get("research_goal", "")
-    logging_utils.log_event(
-        AGENT_NODE_EVENT,
-        {"node": "planner", "research_goal": research_goal, "phase": "entry"},
+    start_time = logging_utils.log_node_entry(
+        "planner",
+        logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["research_goal", "sub_queries"]),
     )
+
+    research_goal = state.get("research_goal", "")
 
     # Only decompose if sub_queries not yet populated
     if not state.get("sub_queries"):
         try:
             decomposition = decompose_goal(research_goal)
             sub_queries = decomposition.sub_queries
-            logging_utils.log_event(
-                AGENT_NODE_EVENT,
-                {
-                    "node": "planner",
-                    "phase": "decomposed",
-                    "research_goal": research_goal,
-                    "sub_queries": sub_queries,
-                    "sub_query_count": len(sub_queries),
-                },
-            )
-            return {
+
+            result_state = {
                 **state,
                 "sub_queries": sub_queries,
                 "current_query_index": 0,
                 "researcher_attempts": 0,
                 "validation_status": "pending",
             }
+            logging_utils.log_node_exit(
+                "planner",
+                logging_utils.safe_state_snapshot(result_state),
+                start_time,
+                status="success",
+            )
+            return cast(ResearchState, result_state)
         except Exception as e:
-            # Log the error and re-raise to halt the graph
-            logging_utils.log_event(
-                AGENT_NODE_EVENT,
-                {
-                    "node": "planner",
-                    "phase": "error",
-                    "research_goal": research_goal,
-                    "error": str(e),
-                },
+            logging_utils.log_node_error(
+                "planner",
+                str(e),
+                logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["research_goal"]),
+                start_time,
             )
             raise
 
     # Already has sub_queries — pass through
-    logging_utils.log_event(
-        AGENT_NODE_EVENT,
-        {"node": "planner", "phase": "passthrough", "sub_queries": state.get("sub_queries")},
+    logging_utils.log_node_exit(
+        "planner",
+        logging_utils.safe_state_snapshot(cast(dict[str, Any], state)),
+        start_time,
+        status="passthrough",
     )
     return state
 
 
 async def researcher_node(state: ResearchState) -> ResearchState:
     """Researcher node — calls MCP server to search papers for the current sub-query."""
+    start_time = logging_utils.log_node_entry(
+        "researcher",
+        logging_utils.safe_state_snapshot(
+            cast(dict[str, Any], state),
+            [
+                "research_goal",
+                "sub_queries",
+                "current_query_index",
+                "researcher_attempts",
+            ],
+        ),
+    )
+
     idx = state.get("current_query_index", 0)
     sub_queries = state.get("sub_queries", [])
     query = sub_queries[idx] if idx < len(sub_queries) else ""
     attempts = state.get("researcher_attempts", 0)
 
-    logging_utils.log_event(
-        AGENT_NODE_EVENT,
-        {
-            "node": "researcher",
-            "phase": "entry",
-            "current_query_index": idx,
-            "query": query,
-            "attempt": attempts,
-        },
-    )
-
     if not query:
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {
-                "node": "researcher",
-                "phase": "error",
-                "error": "No sub-query available at current index",
-                "current_query_index": idx,
-                "sub_queries": sub_queries,
-            },
+        logging_utils.log_node_error(
+            "researcher",
+            "No sub-query available at current index",
+            logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["current_query_index", "sub_queries"]),
+            start_time,
         )
         return {
             **state,
@@ -111,39 +105,30 @@ async def researcher_node(state: ResearchState) -> ResearchState:
     try:
         result = await run_research(query, settings)
 
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {
-                "node": "researcher",
-                "phase": "success",
-                "current_query_index": idx,
-                "query": query,
-                "paper_count": len(result.papers),
-                "cached_summary_count": len(result.cached_summaries),
-                "raw_tool_calls": result.raw_tool_calls,
-            },
-        )
-
-        # Convert PaperResult models to dict for state storage
         papers_as_dict = [p.model_dump(mode="json") for p in result.papers]
 
-        return {
+        result_state = {
             **state,
             "researcher_output": papers_as_dict,
             # researcher_attempts incremented by validator_node on retry
         }
+        logging_utils.log_node_exit(
+            "researcher",
+            logging_utils.safe_state_snapshot(
+                result_state,
+                ["researcher_output", "current_query_index", "researcher_attempts"],
+            ),
+            start_time,
+            status="success",
+        )
+        return cast(ResearchState, result_state)
 
     except ResearcherError as e:
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {
-                "node": "researcher",
-                "phase": "error",
-                "current_query_index": idx,
-                "query": query,
-                "error": str(e),
-                "details": e.details,
-            },
+        logging_utils.log_node_error(
+            "researcher",
+            str(e),
+            logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["current_query_index", "query"]),
+            start_time,
         )
         return {
             **state,
@@ -164,6 +149,21 @@ async def validator_node(state: ResearchState) -> ResearchState:
     If invalid and attempts < MAX, updates current_sub_query to revised_query
     and loops back to researcher_node.
     """
+    start_time = logging_utils.log_node_entry(
+        "validator",
+        logging_utils.safe_state_snapshot(
+            cast(dict[str, Any], state),
+            [
+                "research_goal",
+                "sub_queries",
+                "current_query_index",
+                "researcher_attempts",
+                "validation_status",
+                "researcher_output",
+            ],
+        ),
+    )
+
     idx = state.get("current_query_index", 0)
     sub_queries = state.get("sub_queries", [])
     attempts = state.get("researcher_attempts", 0)
@@ -171,28 +171,12 @@ async def validator_node(state: ResearchState) -> ResearchState:
 
     query = sub_queries[idx] if idx < len(sub_queries) else ""
 
-    logging_utils.log_event(
-        AGENT_NODE_EVENT,
-        {
-            "node": "validator",
-            "phase": "entry",
-            "current_query_index": idx,
-            "query": query,
-            "attempts": attempts,
-            "paper_count": len(researcher_output),
-        },
-    )
-
     if not query:
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {
-                "node": "validator",
-                "phase": "error",
-                "error": "No sub-query available at current index",
-                "current_query_index": idx,
-                "sub_queries": sub_queries,
-            },
+        logging_utils.log_node_error(
+            "validator",
+            "No sub-query available at current index",
+            logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["current_query_index", "sub_queries"]),
+            start_time,
         )
         return {
             **state,
@@ -225,113 +209,87 @@ async def validator_node(state: ResearchState) -> ResearchState:
     # Run validation
     validation_result = await validate_research_output(query, research_result)
 
-    # Log the full validation decision
-    log_payload = {
-        "node": "validator",
-        "phase": "validation_result",
-        "current_query_index": idx,
-        "query": query,
-        "attempts": attempts,
-        "is_valid": validation_result.is_valid,
-        "reason": validation_result.reason,
-        "heuristic_used": validation_result.reason.startswith("Research returned") or validation_result.reason.startswith("Papers have"),
-    }
-
-    if validation_result.revised_query:
-        log_payload["revised_query"] = validation_result.revised_query
-        log_payload["revised_query_changed"] = validation_result.revised_query != query
-
-    logging_utils.log_event(AGENT_NODE_EVENT, log_payload)
-
     if validation_result.is_valid:
         # Valid result - accumulate findings and advance
         validated_findings = state.get("validated_findings", []) + researcher_output
 
         if idx + 1 < len(sub_queries):
             # More queries: advance to next, reset attempts
-            logging_utils.log_event(
-                AGENT_NODE_EVENT,
-                {
-                    "node": "validator",
-                    "phase": "valid_advance",
-                    "next_query_index": idx + 1,
-                    "validated_findings_count": len(validated_findings),
-                },
-            )
-            return {
+            result_state = {
                 **state,
                 "validation_status": "pending",  # Reset for next query's validation
                 "current_query_index": idx + 1,
                 "researcher_attempts": 0,
                 "validated_findings": validated_findings,
             }
+            logging_utils.log_node_exit(
+                "validator",
+                logging_utils.safe_state_snapshot(
+                    result_state,
+                    ["validation_status", "current_query_index", "validated_findings"],
+                ),
+                start_time,
+                status="valid_advance",
+            )
+            return cast(ResearchState, result_state)
         else:
             # Last query was valid: keep valid status, don't advance (router will go to synthesizer)
-            logging_utils.log_event(
-                AGENT_NODE_EVENT,
-                {
-                    "node": "validator",
-                    "phase": "valid_done",
-                    "validated_findings_count": len(validated_findings),
-                    "going_to": "synthesizer",
-                },
-            )
-            return {
+            result_state = {
                 **state,
                 "validation_status": "valid",
                 "validated_findings": validated_findings,
             }
+            logging_utils.log_node_exit(
+                "validator",
+                logging_utils.safe_state_snapshot(
+                    result_state,
+                    ["validation_status", "validated_findings"],
+                ),
+                start_time,
+                status="valid_done",
+            )
+            return cast(ResearchState, result_state)
 
     # Invalid result
     if attempts < MAX_RESEARCHER_ATTEMPTS:
         # Retry with revised query
         revised_query = validation_result.revised_query or query
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {
-                "node": "validator",
-                "phase": "invalid_retry",
-                "current_query_index": idx,
-                "attempt": attempts + 1,
-                "max_attempts": MAX_RESEARCHER_ATTEMPTS,
-                "original_query": query,
-                "revised_query": revised_query,
-                "reason": validation_result.reason,
-            },
-        )
-
-        # Update the current sub-query in state to the revised query
         new_sub_queries = list(sub_queries)
         new_sub_queries[idx] = revised_query
 
-        return {
+        result_state = {
             **state,
             "validation_status": "invalid",
             "sub_queries": new_sub_queries,
             "researcher_attempts": attempts + 1,
         }
+        logging_utils.log_node_exit(
+            "validator",
+            logging_utils.safe_state_snapshot(
+                result_state,
+                ["validation_status", "sub_queries", "researcher_attempts"],
+            ),
+            start_time,
+            status="invalid_retry",
+        )
+        return cast(ResearchState, result_state)
 
     # Exhausted attempts - proceed to synthesizer with what we have
-    logging_utils.log_event(
-        AGENT_NODE_EVENT,
-        {
-            "node": "validator",
-            "phase": "invalid_exhausted",
-            "current_query_index": idx,
-            "attempts": attempts,
-            "max_attempts": MAX_RESEARCHER_ATTEMPTS,
-            "query": query,
-            "reason": validation_result.reason,
-            "going_to": "synthesizer",
-            "note": "max attempts reached, proceeding with partial results",
-        },
-    )
-
-    return {
+    result_state = {
         **state,
         "validation_status": "invalid",
         "error": f"Validation failed after {attempts} attempts: {validation_result.reason}",
     }
+    logging_utils.log_node_exit(
+        "validator",
+        logging_utils.safe_state_snapshot(
+            result_state,
+            ["validation_status", "error"],
+        ),
+        start_time,
+        status="invalid_exhausted",
+    )
+    return cast(ResearchState, result_state)
 
 
 async def synthesizer_node(state: ResearchState) -> ResearchState:
@@ -340,48 +298,42 @@ async def synthesizer_node(state: ResearchState) -> ResearchState:
     Calls synthesize_report() with the accumulated state.validated_findings and
     research_goal, stores the result in state.final_report, and logs input/output.
     """
+    start_time = logging_utils.log_node_entry(
+        "synthesizer",
+        logging_utils.safe_state_snapshot(
+            cast(dict[str, Any], state),
+            ["research_goal", "validated_findings", "validation_status"],
+        ),
+    )
+
     validated_findings = state.get("validated_findings", [])
     research_goal = state.get("research_goal", "")
-
-    logging_utils.log_event(
-        AGENT_NODE_EVENT,
-        {
-            "node": "synthesizer",
-            "phase": "entry",
-            "validated_findings_count": len(validated_findings),
-            "research_goal": research_goal,
-        },
-    )
 
     try:
         final_report = await synthesize_report(research_goal, validated_findings)
 
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {
-                "node": "synthesizer",
-                "phase": "success",
-                "report_length": len(final_report),
-                "validated_findings_count": len(validated_findings),
-            },
-        )
-
-        return {
+        result_state = {
             **state,
             "final_report": final_report,
             "error": state.get("error"),
         }
+        logging_utils.log_node_exit(
+            "synthesizer",
+            logging_utils.safe_state_snapshot(
+                result_state,
+                ["final_report", "error"],
+            ),
+            start_time,
+            status="success",
+        )
+        return cast(ResearchState, result_state)
 
     except Exception as e:
-        # Log the error and re-raise to halt the graph
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {
-                "node": "synthesizer",
-                "phase": "error",
-                "validated_findings_count": len(validated_findings),
-                "error": str(e),
-            },
+        logging_utils.log_node_error(
+            "synthesizer",
+            str(e),
+            logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["validated_findings", "research_goal"]),
+            start_time,
         )
         raise
 
@@ -405,44 +357,13 @@ def _route_after_validator(state: ResearchState) -> str:
 
     if status == "valid":
         if idx + 1 < len(sub_queries):
-            logging_utils.log_event(
-                AGENT_NODE_EVENT,
-                {
-                    "node": "validator",
-                    "decision": "valid_continue",
-                    "next_query_index": idx + 1,
-                },
-            )
             return "researcher"
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {"node": "validator", "decision": "valid_done", "going_to": "synthesizer"},
-        )
         return "synthesizer"
 
     # status is "invalid" (or "failed"/"pending" fallback)
     if attempts < MAX_RESEARCHER_ATTEMPTS:
-        logging_utils.log_event(
-            AGENT_NODE_EVENT,
-            {
-                "node": "validator",
-                "decision": "invalid_retry",
-                "attempt": attempts,
-                "going_to": "researcher",
-            },
-        )
         return "researcher"
 
-    logging_utils.log_event(
-        AGENT_NODE_EVENT,
-        {
-            "node": "validator",
-            "decision": "invalid_exhausted",
-            "attempt": attempts,
-            "going_to": "synthesizer",
-            "note": "max attempts reached, proceeding with partial results",
-        },
-    )
     return "synthesizer"
 
 

@@ -90,19 +90,28 @@ async def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
         patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm),
     ):
         mock_log.log_event = MagicMock()
+        mock_log.log_node_entry = MagicMock(return_value=0.0)
+        mock_log.log_node_exit = MagicMock()
+        mock_log.log_node_error = MagicMock()
+        mock_log.safe_state_snapshot = MagicMock(return_value={})
         mock_decompose.return_value = PlannerDecomposition(
             sub_queries=["sub-query 1", "sub-query 2", "sub-query 3"]
         )
         graph = build_graph()
         result = await graph.ainvoke(state)
-        # Collect node names from log calls
+        # Collect node names from log calls - new format uses node_entry/node_exit/node_error events
         logged_nodes = []
         for call in mock_log.log_event.call_args_list:
             args = call.args
             if args and len(args) >= 2:
                 payload = args[1]
-                if isinstance(payload, dict) and "node" in payload:
-                    logged_nodes.append(payload["node"])
+                if isinstance(payload, dict) and "node_name" in payload:
+                    logged_nodes.append(payload["node_name"])
+        # Also collect from log_node_entry calls
+        for call in mock_log.log_node_entry.call_args_list:
+            args = call.args
+            if args and len(args) >= 1:
+                logged_nodes.append(args[0])
         return result, logged_nodes
 
 
