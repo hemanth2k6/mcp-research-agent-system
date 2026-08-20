@@ -18,11 +18,61 @@ cp .env.example .env
 pip install -e ".[dev]"
 
 # 3. Run the MCP server (stdio transport)
+#    The project works with any OpenAI-compatible endpoint (OmniRoute, local vLLM, etc.)
 python scripts/run_mcp_server.py
 
-# 4. In another terminal, run a research query
-python scripts/run_agent.py --goal "Your research topic here"
+# 4. In another terminal, run a research query using the CLI
+research-agent "What are the latest advances in transformer architectures?"
 ```
+
+### CLI Usage
+
+```bash
+# Basic usage
+research-agent "Your research question here"
+
+# Verbose mode (shows node-by-node progress)
+research-agent "Impact of quantum computing on cryptography" --verbose
+
+# Write report to a file
+research-agent "LLM alignment techniques" --output report.md
+
+# Both verbose and file output
+research-agent "Recent developments in diffusion models" -v -o report.md
+```
+
+### Example Output
+
+```bash
+$ research-agent "What are the latest advances in transformer architectures?" --verbose
+Starting research pipeline for: What are the latest advances in transformer architectures?
+Trace logs will be written to: logs/
+
+  → planner: Generated 3 sub-queries: transformer architecture improvements, attention mechanism variants, efficiency optimizations
+  → researcher: Query 1: transformer architecture improvements... (attempt 1, 5 papers)
+  → validator: Validation passed (total validated: 5)
+  → researcher: Query 2: attention mechanism variants... (attempt 1, 4 papers)
+  → validator: Validation passed (total validated: 9)
+  → researcher: Query 3: efficiency optimizations... (attempt 1, 6 papers)
+  → validator: Validation passed (total validated: 15)
+  → synthesizer: Report generated (4231 chars)
+
+============================================================
+# Latest Advances in Transformer Architectures
+
+## Executive Summary
+...
+
+## Key Findings
+...
+
+## References
+...
+
+Full trace log written to: logs/
+```
+
+## Running the MCP Server Standalone
 
 ## Running the MCP Server Standalone
 

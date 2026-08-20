@@ -7,6 +7,17 @@ from pathlib import Path
 from typing import Any
 
 
+def configure_logging() -> None:
+    """Configure logging - ensures log directory exists."""
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+
+def get_log_dir() -> Path:
+    """Get the log directory path."""
+    return Path("logs")
+
+
 def _get_log_file() -> Path:
     """Get the log file path, creating directory if needed."""
     log_dir = Path("logs")

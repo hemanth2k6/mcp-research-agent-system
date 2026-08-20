@@ -27,6 +27,9 @@ dev = [
     "rich>=13.0.0",
 ]
 
+[project.scripts]
+research-agent = "mcp_research_agent_system.cli:main"
+
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
