@@ -383,5 +383,202 @@ async def test_research_result_model():
     assert len(data["cached_summaries"]) == 1
 
 
+class TestResearcherErrorPaths:
+    """Tests for error paths in run_research that are currently uncovered."""
+
+    @pytest.mark.asyncio
+    async def test_get_cached_summary_exception_logged_and_continues(self):
+        """Test get_cached_summary tool call exception is caught and logged (lines 189-195)."""
+        from mcp import types
+
+        settings = Settings(database_path=":memory:")
+
+        # Mock successful search_papers, then get_cached_summary throws exception
+        mock_session = AsyncMock()
+        mock_session.initialize = AsyncMock()
+
+        search_result = types.CallToolResult(
+            content=[types.TextContent(type="text", text="")],
+            structured_content={"papers": [{"arxiv_id": "2401.11111v1", "title": "Test", "authors": ["A"], "abstract": "A", "category": "cs.AI", "published_date": "2024-01-01", "updated_date": "2024-01-01", "pdf_url": "http://arxiv.org/pdf/2401.11111v1"}]},
+            is_error=False
+        )
+
+        # First call succeeds, second throws exception
+        mock_session.call_tool = AsyncMock(side_effect=[search_result, Exception("cached summary timeout")])
+
+        mock_read = AsyncMock()
+        mock_write = AsyncMock()
+        mock_stdio_ctx = AsyncMock()
+        mock_stdio_ctx.__aenter__.return_value = (mock_read, mock_write)
+        mock_stdio_ctx.__aexit__.return_value = False
+
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = False
+
+        with patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client",
+            return_value=mock_stdio_ctx,
+        ), patch(
+            "mcp_research_agent_system.agents.researcher.ClientSession",
+            return_value=mock_session_ctx,
+        ), patch(
+            "mcp_research_agent_system.agents.researcher.logging_utils"
+        ) as mock_log:
+            mock_log.log_event = MagicMock()
+
+            result = await run_research("test query", settings)
+
+        # Should succeed despite cached summary failure
+        assert isinstance(result, ResearchResult)
+        assert len(result.papers) == 1
+        assert len(result.cached_summaries) == 0  # No cached summaries due to error
+
+        # Verify error was logged
+        error_logged = any(
+            call.args[0] == "researcher_tool_error" and "cached_summary" in str(call.args[1])
+            for call in mock_log.log_event.call_args_list
+        )
+        assert error_logged, "Expected researcher_tool_error to be logged for get_cached_summary failure"
+
+    @pytest.mark.asyncio
+    async def test_get_cached_summary_validation_error_logged(self):
+        """Test get_cached_summary validation error is caught and logged (lines 219-227)."""
+        from mcp import types
+
+        settings = Settings(database_path=":memory:")
+
+        mock_session = AsyncMock()
+        mock_session.initialize = AsyncMock()
+
+        search_result = types.CallToolResult(
+            content=[types.TextContent(type="text", text="")],
+            structured_content={"papers": [{"arxiv_id": "2401.11111v1", "title": "Test", "authors": ["A"], "abstract": "A", "category": "cs.AI", "published_date": "2024-01-01", "updated_date": "2024-01-01", "pdf_url": "http://arxiv.org/pdf/2401.11111v1"}]},
+            is_error=False
+        )
+
+        # get_cached_summary returns invalid structured content
+        cached_error_result = types.CallToolResult(
+            content=[types.TextContent(type="text", text="")],
+            structured_content={"wrong_key": []},  # Missing required 'cached_summaries' key
+            is_error=False
+        )
+
+        mock_session.call_tool = AsyncMock(side_effect=[search_result, cached_error_result])
+
+        mock_read = AsyncMock()
+        mock_write = AsyncMock()
+        mock_stdio_ctx = AsyncMock()
+        mock_stdio_ctx.__aenter__.return_value = (mock_read, mock_write)
+        mock_stdio_ctx.__aexit__.return_value = False
+
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = False
+
+        with patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client",
+            return_value=mock_stdio_ctx,
+        ), patch(
+            "mcp_research_agent_system.agents.researcher.ClientSession",
+            return_value=mock_session_ctx,
+        ), patch(
+            "mcp_research_agent_system.agents.researcher.logging_utils"
+        ) as mock_log:
+            mock_log.log_event = MagicMock()
+
+            result = await run_research("test query", settings)
+
+        # Should succeed despite validation error
+        assert isinstance(result, ResearchResult)
+        assert len(result.papers) == 1
+        assert len(result.cached_summaries) == 0  # No cached summaries due to validation error
+
+        # Verify validation error was logged
+        error_logged = any(
+            call.args[0] == "researcher_tool_error" and "Failed to parse" in str(call.args[1])
+            for call in mock_log.log_event.call_args_list
+        )
+        assert error_logged, "Expected researcher_tool_error to be logged for get_cached_summary validation failure"
+
+    @pytest.mark.asyncio
+    async def test_file_not_found_error_wrapped(self):
+        """Test FileNotFoundError from stdio_client is wrapped in ResearcherError (lines 239-243)."""
+        settings = Settings(database_path=":memory:")
+
+        with patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client"
+        ) as mock_stdio:
+            mock_stdio.side_effect = FileNotFoundError("No such file: /usr/bin/python3.12")
+
+            with pytest.raises(ResearcherError) as exc_info:
+                await run_research("test query", settings)
+
+            assert "not found" in str(exc_info.value).lower()
+            assert exc_info.value.details.get("command") is not None
+            assert exc_info.value.details.get("args") is not None
+            # Check exception chaining
+            assert exc_info.value.__cause__ is not None
+            assert isinstance(exc_info.value.__cause__, FileNotFoundError)
+
+    @pytest.mark.asyncio
+    async def test_permission_error_wrapped(self):
+        """Test PermissionError from stdio_client is wrapped in ResearcherError (lines 244-248)."""
+        settings = Settings(database_path=":memory:")
+
+        with patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client"
+        ) as mock_stdio:
+            mock_stdio.side_effect = PermissionError("Permission denied: /usr/bin/python")
+
+            with pytest.raises(ResearcherError) as exc_info:
+                await run_research("test query", settings)
+
+            assert "permission" in str(exc_info.value).lower()
+            assert exc_info.value.details.get("command") is not None
+            assert exc_info.value.__cause__ is not None
+            assert isinstance(exc_info.value.__cause__, PermissionError)
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_wrapped(self):
+        """Test unexpected exception is caught and wrapped in ResearcherError (lines 249-254).
+
+        To hit the outer catch-all (not the inner tool-call catch), we need an error
+        that occurs outside the inner try/except, e.g., during session.initialize().
+        """
+
+        settings = Settings(database_path=":memory:")
+
+        mock_session = AsyncMock()
+        # Unexpected error during session.initialize() - not caught by inner try/except
+        mock_session.initialize = AsyncMock(side_effect=ConnectionError("Connection refused"))
+        mock_session.call_tool = AsyncMock()
+
+        mock_read = AsyncMock()
+        mock_write = AsyncMock()
+        mock_stdio_ctx = AsyncMock()
+        mock_stdio_ctx.__aenter__.return_value = (mock_read, mock_write)
+        mock_stdio_ctx.__aexit__.return_value = False
+
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = False
+
+        with patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client",
+            return_value=mock_stdio_ctx,
+        ), patch(
+            "mcp_research_agent_system.agents.researcher.ClientSession",
+            return_value=mock_session_ctx,
+        ):
+            with pytest.raises(ResearcherError) as exc_info:
+                await run_research("test query", settings)
+
+            assert "unexpected error" in str(exc_info.value).lower()
+            assert exc_info.value.details.get("error_type") == "ConnectionError"
+            assert exc_info.value.__cause__ is not None
+            assert isinstance(exc_info.value.__cause__, ConnectionError)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

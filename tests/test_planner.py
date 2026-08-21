@@ -1,6 +1,6 @@
 """Tests for the planner agent goal decomposition."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_openai import ChatOpenAI
@@ -8,8 +8,11 @@ from pydantic import ValidationError
 
 from mcp_research_agent_system.agents.planner import (
     PlannerDecomposition,
+    _parse_llm_json_response,
+    _token_overlap,
     decompose_goal,
 )
+from mcp_research_agent_system.agents.researcher import PaperResult, ResearchResult
 from mcp_research_agent_system.errors import PlannerError
 
 
@@ -153,6 +156,187 @@ class TestDecomposeGoal:
             decompose_goal("Test goal", llm=mock_llm)
 
         assert exc_info.value.__cause__ is not None
+
+
+class TestParseLlmJsonResponse:
+    """Tests for _parse_llm_json_response error paths."""
+
+    def test_fallback_json_extraction_failure_raises_planner_error(self):
+        """Test that JSON-looking-but-invalid content raises PlannerError (lines 72-73)."""
+        # Contains a {.*} match but the extracted JSON is invalid
+        with pytest.raises(PlannerError) as exc_info:
+            _parse_llm_json_response('{"sub_queries": ["q1", "q2", "q3"')  # truncated JSON
+
+        assert "Failed to parse LLM response" in str(exc_info.value)
+
+    def test_no_braces_raises_planner_error(self):
+        """Test that content without any braces raises PlannerError."""
+        with pytest.raises(PlannerError):
+            _parse_llm_json_response("no json here at all")
+
+
+class TestTokenOverlap:
+    """Tests for _token_overlap edge cases."""
+
+    def test_empty_query_returns_zero(self):
+        """Test empty query returns 0.0 (line 84)."""
+        assert _token_overlap("", "some text") == 0.0
+
+    def test_empty_text_returns_zero(self):
+        """Test empty text returns 0.0 (line 84)."""
+        assert _token_overlap("some query", "") == 0.0
+
+    def test_whitespace_only_query_returns_zero(self):
+        """Test whitespace-only query yields no tokens -> 0.0 (line 90)."""
+        # Punctuation-only strings produce zero \w+ tokens
+        assert _token_overlap("!!! ???", "some text") == 0.0
+
+    def test_full_overlap_returns_one(self):
+        """Test identical token sets return 1.0."""
+        assert _token_overlap("hello world", "world hello") == 1.0
+
+    def test_partial_overlap(self):
+        """Test partial overlap returns ratio."""
+        assert _token_overlap("hello world foo", "hello world") == pytest.approx(2 / 3)
+
+
+class TestSuggestRevisedQuery:
+    """Tests for _suggest_revised_query fallback branch."""
+
+    def test_unknown_failure_reason_appends_paper(self):
+        """Test unknown failure reason appends ' paper' (line 162)."""
+        from mcp_research_agent_system.agents.planner import _suggest_revised_query
+
+        result = _suggest_revised_query("quantum computing", "validation error")
+        assert result == "quantum computing paper"
+
+    def test_short_query_no_results_appends_recent(self):
+        """Test short query with 'no results' appends ' recent'."""
+        from mcp_research_agent_system.agents.planner import _suggest_revised_query
+
+        result = _suggest_revised_query("quantum", "no results")
+        assert result == "quantum recent"
+
+    def test_long_query_no_results_truncates_to_three_words(self):
+        """Test long query with 'no results' keeps first three words."""
+        from mcp_research_agent_system.agents.planner import _suggest_revised_query
+
+        result = _suggest_revised_query("quantum error correction surface codes", "no results")
+        assert result == "quantum error correction"
+
+    def test_off_topic_appends_survey(self):
+        """Test 'off-topic results' appends ' survey'."""
+        from mcp_research_agent_system.agents.planner import _suggest_revised_query
+
+        result = _suggest_revised_query("quantum computing", "off-topic results")
+        assert result == "quantum computing survey"
+
+
+class TestLLMJudgeFallbackParsing:
+    """Tests for the LLM judge's manual-parse fallback path (lines 224-236)."""
+
+    @pytest.fixture
+    def ambiguous_result(self) -> ResearchResult:
+        """Create a research result with ambiguous overlap to trigger LLM judge.
+
+        Uses low-overlap papers that will pass empty check but fail high-overlap check,
+        falling into the ambiguous zone (0.1 <= overlap < 0.3) where LLM judge is called.
+        """
+        papers = [
+            PaperResult(
+                arxiv_id="2401.00001v1",
+                title="Graph Neural Networks: A Review",
+                authors=["Author A"],
+                abstract="We review graph neural network architectures and their applications in computer vision.",
+                category="cs.LG",
+                published_date="2024-01-01T00:00:00+00:00",
+                updated_date="2024-01-02T00:00:00+00:00",
+                pdf_url="http://arxiv.org/pdf/2401.00001v1",
+            ),
+        ]
+        return ResearchResult(
+            sub_query="graph neural networks for molecular property prediction drug discovery",
+            papers=papers,
+            cached_summaries=[],
+            raw_tool_calls=[],
+        )
+
+    async def test_structured_output_fails_then_fallback_parses_direct_json(
+        self, ambiguous_result
+    ):
+        """Structured output raises; fallback llm.ainvoke returns valid JSON (lines 224-230)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        mock_response = MagicMock()
+        mock_response.content = '{"is_valid": true, "reason": "relevant", "revised_query": null}'
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        with patch(
+            "mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm
+        ):
+            from mcp_research_agent_system.agents.planner import validate_research_output
+
+            outcome = await validate_research_output(
+                "graph neural networks for molecular property prediction drug discovery", ambiguous_result
+            )
+
+        assert outcome.is_valid is True
+        assert mock_llm.ainvoke.call_count == 1
+
+    async def test_fallback_extracts_json_from_surrounding_text(self, ambiguous_result):
+        """Fallback response wraps JSON in prose; regex extraction succeeds (lines 233-236)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        mock_response = MagicMock()
+        mock_response.content = (
+            'My judgment: {"is_valid": false, "reason": "tangential", '
+            '"revised_query": "gnn molecular property prediction"} hope that helps'
+        )
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        with patch(
+            "mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm
+        ):
+            from mcp_research_agent_system.agents.planner import validate_research_output
+
+            outcome = await validate_research_output(
+                "graph neural networks for molecular property prediction drug discovery", ambiguous_result
+            )
+
+        assert outcome.is_valid is False
+        assert outcome.revised_query == "gnn molecular property prediction"
+
+    async def test_all_fallback_attempts_fail_defaults_invalid(self, ambiguous_result):
+        """Both fallback attempts fail -> default invalid ValidationOutcome (lines 243-248)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        mock_response = MagicMock()
+        mock_response.content = "completely unparseable"
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        with patch(
+            "mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm
+        ):
+            from mcp_research_agent_system.agents.planner import validate_research_output
+
+            outcome = await validate_research_output(
+                "graph neural networks for molecular property prediction drug discovery", ambiguous_result
+            )
+
+        # Defaults to invalid with a generic revised query after retries exhausted
+        assert outcome.is_valid is False
+        assert "failed after retries" in outcome.reason.lower()
+        assert outcome.revised_query is not None
+        assert mock_llm.ainvoke.call_count == 2  # max_retries = 2
 
 
 class TestPlannerNodeIntegration:

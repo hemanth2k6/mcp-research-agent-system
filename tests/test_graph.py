@@ -115,6 +115,270 @@ async def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
         return result, logged_nodes
 
 
+@pytest.fixture
+def mock_graph_setup():
+    """Complete mock setup for graph tests with all LLM mocks."""
+    from mcp_research_agent_system.agents.planner import ValidationOutcome
+    from mcp_research_agent_system.agents.synthesizer import SynthesizedReport
+
+    mock_llm = MagicMock()
+    mock_synthesizer_structured = AsyncMock()
+    mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
+        report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+    ))
+
+    mock_planner_response = MagicMock()
+    mock_planner_response.content = '{"sub_queries": ["sub-query 1", "sub-query 2", "sub-query 3"]}'
+    mock_llm.invoke = MagicMock(return_value=mock_planner_response)
+
+    mock_validator_structured = AsyncMock()
+    mock_validator_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
+        is_valid=True,
+        reason="Papers are relevant to the sub-query",
+        revised_query=None,
+    ))
+
+    def with_structured_output_side_effect(model_class):
+        if model_class.__name__ == "SynthesizedReport":
+            return mock_synthesizer_structured
+        elif model_class.__name__ == "ValidationOutcome":
+            return mock_validator_structured
+        return AsyncMock()
+
+    mock_llm.with_structured_output = MagicMock(side_effect=with_structured_output_side_effect)
+
+    with (
+        patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
+        patch("mcp_research_agent_system.agents.graph.decompose_goal") as mock_decompose,
+        patch("mcp_research_agent_system.agents.synthesizer.get_llm", return_value=mock_llm),
+        patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm),
+    ):
+        mock_log.log_event = MagicMock()
+        mock_log.log_node_entry = MagicMock(return_value=0.0)
+        mock_log.log_node_exit = MagicMock()
+        mock_log.log_node_error = MagicMock()
+        mock_log.safe_state_snapshot = MagicMock(return_value={})
+        mock_decompose.return_value = PlannerDecomposition(
+            sub_queries=["sub-query 1", "sub-query 2", "sub-query 3"]
+        )
+        graph = build_graph()
+        yield graph, mock_log
+
+
+async def test_researcher_node_no_sub_query_error(mock_graph_setup):
+    """Test researcher_node handles missing sub-query at index (line 90-101)."""
+    graph, mock_log = mock_graph_setup
+
+    # State with invalid current_query_index (beyond sub_queries length)
+    state = create_initial_state("Test goal")
+    state["sub_queries"] = ["only one query"]
+    state["current_query_index"] = 5  # Beyond length
+    state["validation_status"] = "pending"
+
+    result = await graph.ainvoke(state)
+
+    # Should log error and proceed
+    error_logged = any(
+        call.args[0] == "node_error" and "No sub-query available" in str(call.args[1])
+        for call in mock_log.log_event.call_args_list
+    )
+    assert error_logged or result.get("error") is not None
+
+
+async def test_researcher_node_handles_researcher_error(mock_graph_setup):
+    """Test researcher_node handles ResearcherError from run_research (lines 126-133)."""
+    from mcp_research_agent_system.agents.researcher import ResearcherError
+
+    graph, mock_log = mock_graph_setup
+
+    state = create_initial_state("Test goal")
+    state["sub_queries"] = ["valid query"]
+    state["current_query_index"] = 0
+    state["validation_status"] = "pending"
+
+    with patch("mcp_research_agent_system.agents.graph.run_research") as mock_run:
+        mock_run.side_effect = ResearcherError("MCP server failed")
+
+        result = await graph.ainvoke(state)
+
+    # Should log error and continue to validator
+    assert "error" in result or result.get("researcher_output") == []
+
+
+async def test_validator_node_no_sub_query_error(mock_graph_setup):
+    """Test validator_node handles missing sub-query at index (lines 175-185)."""
+    graph, mock_log = mock_graph_setup
+
+    state = create_initial_state("Test goal")
+    state["sub_queries"] = ["only one"]
+    state["current_query_index"] = 5  # Beyond length
+    state["validation_status"] = "pending"
+    state["researcher_output"] = []
+
+    result = await graph.ainvoke(state)
+
+    # Should log error and set validation_status to invalid
+    assert result.get("validation_status") == "invalid"
+
+
+async def test_validator_node_exhausted_attempts():
+    """Test validator_node exhausted attempts path (lines 278-292)."""
+    from mcp_research_agent_system.agents.graph import build_graph
+    from mcp_research_agent_system.agents.planner import ValidationOutcome
+    from mcp_research_agent_system.agents.state import create_initial_state
+    from mcp_research_agent_system.agents.synthesizer import SynthesizedReport
+
+    mock_llm = MagicMock()
+    mock_synthesizer_structured = AsyncMock()
+    mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
+        report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+    ))
+
+    mock_planner_response = MagicMock()
+    mock_planner_response.content = '{"sub_queries": ["hard query"]}'
+    mock_llm.invoke = MagicMock(return_value=mock_planner_response)
+
+    mock_validator_structured = AsyncMock()
+    mock_validator_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
+        is_valid=False,
+        reason="Papers are not relevant",
+        revised_query="revised query",
+    ))
+
+    def with_structured_output_side_effect(model_class):
+        if model_class.__name__ == "SynthesizedReport":
+            return mock_synthesizer_structured
+        elif model_class.__name__ == "ValidationOutcome":
+            return mock_validator_structured
+        return AsyncMock()
+
+    mock_llm.with_structured_output = MagicMock(side_effect=with_structured_output_side_effect)
+
+    with (
+        patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
+        patch("mcp_research_agent_system.agents.graph.decompose_goal") as mock_decompose,
+        patch("mcp_research_agent_system.agents.synthesizer.get_llm", return_value=mock_llm),
+        patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm),
+        patch("mcp_research_agent_system.agents.graph.run_research") as mock_run_research,
+    ):
+        mock_log.log_event = MagicMock()
+        mock_log.log_node_entry = MagicMock(return_value=0.0)
+        mock_log.log_node_exit = MagicMock()
+        mock_log.log_node_error = MagicMock()
+        mock_log.safe_state_snapshot = MagicMock(return_value={})
+        mock_decompose.return_value = MagicMock(sub_queries=["hard query"])
+        mock_run_research.return_value = MagicMock(papers=[])
+
+        graph = build_graph()
+
+        state = create_initial_state("Test goal")
+        state["sub_queries"] = ["hard query"]
+        state["current_query_index"] = 0
+        state["researcher_attempts"] = 3  # At MAX
+        state["validation_status"] = "pending"
+        state["researcher_output"] = []
+
+        result = await graph.ainvoke(state)
+
+        # Should set error and validation_status invalid, proceed to synthesizer
+        assert result.get("validation_status") == "invalid"
+        assert "error" in result
+        logged_nodes = [call.args[0] for call in mock_log.log_node_entry.call_args_list]
+        assert "synthesizer" in logged_nodes
+
+
+async def test_synthesizer_node_error_handling():
+    """Test synthesizer_node error handling (lines 331-338)."""
+    from mcp_research_agent_system.agents.graph import build_graph
+    from mcp_research_agent_system.agents.planner import ValidationOutcome
+    from mcp_research_agent_system.agents.state import create_initial_state
+
+    mock_llm = MagicMock()
+    mock_synthesizer_structured = AsyncMock()
+    mock_synthesizer_structured.ainvoke = AsyncMock(side_effect=Exception("LLM failed"))
+    # Also mock the fallback invoke
+    mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM failed"))
+
+    mock_planner_response = MagicMock()
+    mock_planner_response.content = '{"sub_queries": ["sub-query 1", "sub-query 2", "sub-query 3"]}'
+    mock_llm.invoke = MagicMock(return_value=mock_planner_response)
+
+    mock_validator_structured = AsyncMock()
+    mock_validator_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
+        is_valid=True,
+        reason="Papers are relevant to the sub-query",
+        revised_query=None,
+    ))
+
+    def with_structured_output_side_effect(model_class):
+        if model_class.__name__ == "SynthesizedReport":
+            return mock_synthesizer_structured
+        elif model_class.__name__ == "ValidationOutcome":
+            return mock_validator_structured
+        return AsyncMock()
+
+    mock_llm.with_structured_output = MagicMock(side_effect=with_structured_output_side_effect)
+
+    with (
+        patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
+        patch("mcp_research_agent_system.agents.graph.decompose_goal") as mock_decompose,
+        patch("mcp_research_agent_system.agents.synthesizer.get_llm", return_value=mock_llm),
+        patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm),
+    ):
+        mock_log.log_event = MagicMock()
+        mock_log.log_node_entry = MagicMock(return_value=0.0)
+        mock_log.log_node_exit = MagicMock()
+        mock_log.log_node_error = MagicMock()
+        mock_log.safe_state_snapshot = MagicMock(return_value={})
+        mock_decompose.return_value = PlannerDecomposition(
+            sub_queries=["sub-query 1", "sub-query 2", "sub-query 3"]
+        )
+        graph = build_graph()
+
+        state = create_initial_state("Test goal")
+        state["validated_findings"] = [{"title": "test"}]
+        state["validation_status"] = "valid"
+        state["sub_queries"] = ["q1", "q2", "q3"]
+        state["current_query_index"] = 3
+
+        # Graph should raise the error
+        try:
+            await graph.ainvoke(state)
+            raise AssertionError("Expected exception")
+        except Exception as e:
+            assert "LLM failed" in str(e) or "synthesize" in str(e).lower()
+
+        # Error should be logged via log_node_error (which calls log_event internally)
+        # Check log_node_error was called with "synthesizer" and the error
+        error_logged = any(
+            call.args[0] == "synthesizer" and ("LLM failed" in str(call.args[1]) or "synthesize" in str(call.args[1]).lower())
+            for call in mock_log.log_node_error.call_args_list
+        )
+        assert error_logged
+
+
+async def test_router_invalid_exhausted_goes_to_synthesizer(mock_graph_setup):
+    """Test router routes exhausted invalid to synthesizer (line 360)."""
+    graph, mock_log = mock_graph_setup
+
+    state = create_initial_state("Test goal")
+    state["sub_queries"] = ["query"]
+    state["current_query_index"] = 0
+    state["researcher_attempts"] = 3  # At MAX
+    state["validation_status"] = "invalid"
+    state["researcher_output"] = []
+
+    await graph.ainvoke(state)
+
+    # Should go to synthesizer, not loop
+    logged_nodes = [call.args[0] for call in mock_log.log_node_entry.call_args_list]
+    assert "synthesizer" in logged_nodes
+    # Validator should not be called again after exhaustion
+    validator_count = logged_nodes.count("validator")
+    # Validator runs once, then router sends to synthesizer
+    assert validator_count == 1
+
+
 def test_build_graph_returns_compiled_graph():
     """Test that build_graph returns a compiled graph instance."""
     graph = build_graph()

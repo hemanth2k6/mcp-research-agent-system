@@ -11,6 +11,7 @@ from mcp_research_agent_system.agents.state import create_initial_state
 from mcp_research_agent_system.agents.synthesizer import (
     SynthesizedReport,
     _build_insufficient_data_report,
+    _parse_llm_json_response,
     synthesize_report,
 )
 from mcp_research_agent_system.errors import SynthesizerError
@@ -515,6 +516,149 @@ Surveys and papers on efficient transformer variants.
         assert "impossible topic xyz123" in result["final_report"]
         assert "Recommendations" in result["final_report"]
         assert "Refine the research goal" in result["final_report"]
+
+
+class TestParseLlmJsonResponse:
+    """Tests for _parse_llm_json_response error paths (lines 52, 62)."""
+
+    def test_fallback_json_extraction_failure_raises_synthesizer_error(self):
+        """Test that JSON-looking-but-invalid content raises SynthesizerError (lines 55-62)."""
+        with pytest.raises(SynthesizerError) as exc_info:
+            _parse_llm_json_response('{"report": "truncated')  # invalid JSON
+
+        assert "Failed to parse LLM response" in str(exc_info.value)
+
+    def test_no_braces_raises_synthesizer_error(self):
+        """Test that content without any braces raises SynthesizerError."""
+        with pytest.raises(SynthesizerError):
+            _parse_llm_json_response("no json here at all")
+
+
+class TestSynthesizeReportFallbackPaths:
+    """Tests for fallback parsing paths in synthesize_report (lines 178-209)."""
+
+    @pytest.fixture
+    def sample_findings(self):
+        """Sample findings for testing."""
+        return [
+            {
+                "arxiv_id": "2401.12345v1",
+                "title": "Test Paper",
+                "authors": ["Author A"],
+                "abstract": "Test abstract",
+                "category": "cs.AI",
+                "published_date": "2024-01-01T00:00:00+00:00",
+                "updated_date": "2024-01-01T00:00:00+00:00",
+                "pdf_url": "http://arxiv.org/pdf/2401.12345v1",
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_fallback_direct_json_parse(self, sample_findings):
+        """Test fallback directly parses valid JSON (lines 189-191)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("Structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        mock_response = AsyncMock()
+        mock_response.content = '{"report": "# Fallback Report\\n\\n## Overview\\nDirect JSON parse"}'
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        result = await synthesize_report("Test goal", sample_findings, llm=mock_llm)
+
+        assert "Fallback Report" in result
+        assert "Direct JSON parse" in result
+        mock_llm.ainvoke.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fallback_extracts_json_from_markdown(self, sample_findings):
+        """Test fallback extracts JSON from markdown code block (lines 200-208)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("Structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        mock_response = AsyncMock()
+        mock_response.content = '```json\n{"report": "# Markdown Report\\n\\nContent from markdown"}\n```'
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        result = await synthesize_report("Test goal", sample_findings, llm=mock_llm)
+
+        assert "Markdown Report" in result
+        assert "Content from markdown" in result
+
+    @pytest.mark.asyncio
+    async def test_fallback_extracts_json_from_surrounding_text(self, sample_findings):
+        """Test fallback extracts JSON from surrounding text (lines 200-208)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("Structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        mock_response = AsyncMock()
+        mock_response.content = 'Here is your report: {"report": "# Surrounded Report\\n\\nFrom surrounding text"} done.'
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        result = await synthesize_report("Test goal", sample_findings, llm=mock_llm)
+
+        assert "Surrounded Report" in result
+        assert "From surrounding text" in result
+
+    @pytest.mark.asyncio
+    async def test_fallback_retry_on_first_failure(self, sample_findings):
+        """Test fallback retries when first attempt fails (lines 182, 211)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("Structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        # First fallback attempt returns malformed JSON, second succeeds
+        mock_response1 = AsyncMock()
+        mock_response1.content = "not json at all"
+        mock_response2 = AsyncMock()
+        mock_response2.content = '{"report": "# Retry Report\\n\\nSecond attempt works"}'
+        mock_llm.ainvoke = AsyncMock(side_effect=[mock_response1, mock_response2])
+
+        result = await synthesize_report("Test goal", sample_findings, llm=mock_llm)
+
+        assert "Retry Report" in result
+        assert mock_llm.ainvoke.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_fallback_both_attempts_fail_raises_synthesizer_error(self, sample_findings):
+        """Test both fallback attempts fail -> raises SynthesizerError (lines 211-222)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("Structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        mock_response = AsyncMock()
+        mock_response.content = "completely invalid"
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        with pytest.raises(SynthesizerError) as exc_info:
+            await synthesize_report("Test goal", sample_findings, llm=mock_llm)
+
+        assert "Failed to synthesize report" in str(exc_info.value)
+        assert mock_llm.ainvoke.call_count == 2  # max_retries = 2
+
+    @pytest.mark.asyncio
+    async def test_fallback_error_chains_original_exception(self, sample_findings):
+        """Test SynthesizerError chains the last underlying exception (line 222)."""
+        mock_llm = AsyncMock(spec=ChatOpenAI)
+        mock_structured = AsyncMock()
+        mock_structured.ainvoke.side_effect = Exception("Structured output failed")
+        mock_llm.with_structured_output.return_value = mock_structured
+
+        mock_response = AsyncMock()
+        mock_response.content = "invalid"
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        with pytest.raises(SynthesizerError) as exc_info:
+            await synthesize_report("Test goal", sample_findings, llm=mock_llm)
+
+        assert exc_info.value.__cause__ is not None
 
 
 if __name__ == "__main__":
