@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  research-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mcp-research-agent-system:latest
+    container_name: mcp-research-agent
+    # Single service runs the CLI; researcher spawns MCP server as subprocess internally
+    # Mount volumes for persistent data and logs
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    # Load environment variables from .env file (not baked into image)
+    env_file:
+      - .env
+    # Run as non-root user (defined in Dockerfile)
+    user: "1000:1000"
+    # stdin_open and tty needed for interactive CLI usage
+    stdin_open: true
+    tty: true
+    # Restart policy for long-running services
+    restart: unless-stopped

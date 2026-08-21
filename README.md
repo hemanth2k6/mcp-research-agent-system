@@ -104,6 +104,64 @@ echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | python -m mc
 echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_papers","arguments":{"query":"machine learning","category":"cs.AI","max_results":5}}}' | python -m mcp_research_agent_system.mcp_server
 ```
 
+## Running with Docker
+
+Containerize the entire system (MCP server + agent CLI) for zero-setup demos and deployments.
+
+### Quick Start
+
+```bash
+# 1. Build the image
+docker build -t mcp-research-agent-system .
+
+# 2. Run a research query (CLI is the default entrypoint)
+docker run --rm \
+  -v ./data:/app/data \
+  -v ./logs:/app/logs \
+  --env-file .env \
+  mcp-research-agent-system "What are the latest advances in transformer architectures?" --verbose
+```
+
+### Run the MCP Server Standalone
+
+```bash
+docker run --rm \
+  -v ./data:/app/data \
+  -v ./logs:/app/logs \
+  --env-file .env \
+  --entrypoint python \
+  mcp-research-agent-system -m mcp_research_agent_system.mcp_server
+```
+
+### With Docker Compose
+
+```bash
+# Build and run in one command (interactive CLI)
+docker compose run --rm research-agent "Impact of quantum computing on cryptography"
+
+# Run MCP server as a background service
+docker compose up research-agent
+```
+
+### Volume Mounts
+
+| Host Path | Container Path | Purpose |
+|-----------|----------------|---------|
+| `./data` | `/app/data` | SQLite database persistence |
+| `./logs` | `/app/logs` | Structured JSONL trace logs |
+
+### Environment Variables
+
+All configuration is read from `.env` (never baked into the image):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LLM_BASE_URL` | OpenAI-compatible API base URL | `http://localhost:20128/v1` |
+| `LLM_API_KEY` | API key | required |
+| `LLM_MODEL` | Model name | `gpt-4o-mini` |
+| `RESEARCH_AGENT_DB_PATH` | SQLite database path | `data/research_agent.db` |
+| `LOG_DIR` | Trace log directory | `logs/` |
+
 ## Configuration
 
 All settings via `.env` (see `.env.example`):
