@@ -106,16 +106,12 @@ class ArxivClient:
             params["sortBy"] = "submittedDate"
             params["sortOrder"] = "descending"
 
-        response = await self._client.get(
-            self.settings.arxiv_api_base_url, params=params
-        )
+        response = await self._client.get(self.settings.arxiv_api_base_url, params=params)
         response.raise_for_status()
 
         return self._parse_atom_response(response.text, date_from)
 
-    def _parse_atom_response(
-        self, xml_text: str, date_from: datetime | None = None
-    ) -> list[Paper]:
+    def _parse_atom_response(self, xml_text: str, date_from: datetime | None = None) -> list[Paper]:
         """Parse Atom XML response into Paper objects.
 
         Args:
@@ -148,7 +144,11 @@ class ArxivClient:
                     authors.append(name_elem.text.strip())
 
             abstract_elem = entry.find("atom:summary", ATOM_NS)
-            abstract = abstract_elem.text.strip() if abstract_elem is not None and abstract_elem.text else ""
+            abstract = (
+                abstract_elem.text.strip()
+                if abstract_elem is not None and abstract_elem.text
+                else ""
+            )
 
             # Extract category (primary category)
             category = ""

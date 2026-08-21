@@ -83,9 +83,11 @@ class TestRetryLoopIntegration:
         from mcp_research_agent_system.agents.synthesizer import SynthesizedReport
 
         mock_synthesizer_structured = AsyncMock()
-        mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-            report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
-        ))
+        mock_synthesizer_structured.ainvoke = AsyncMock(
+            return_value=SynthesizedReport(
+                report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+            )
+        )
 
         def synthesizer_get_llm():
             mock_llm = MagicMock()
@@ -130,21 +132,25 @@ class TestRetryLoopIntegration:
         results_sequence = [bad_empty, bad_offtopic, good_result]
         run_research_mock = AsyncMock(side_effect=results_sequence)
 
-        with patch(
-            "mcp_research_agent_system.agents.graph.run_research", run_research_mock
-        ):
+        with patch("mcp_research_agent_system.agents.graph.run_research", run_research_mock):
             graph = build_graph()
             result = await graph.ainvoke(initial_state)
 
         # 1. Researcher called exactly 3 times (initial + 2 retries before success on 3rd)
-        assert run_research_mock.call_count == 3, f"Expected 3 calls, got {run_research_mock.call_count}"
+        assert run_research_mock.call_count == 3, (
+            f"Expected 3 calls, got {run_research_mock.call_count}"
+        )
 
         # 2. Final validation status is valid
-        assert result["validation_status"] == "valid", f"Expected valid, got {result['validation_status']}"
+        assert result["validation_status"] == "valid", (
+            f"Expected valid, got {result['validation_status']}"
+        )
 
         # 3. Researcher attempts should be 2 (2 failed attempts before success)
         # Note: the valid branch does not reset attempts, so it stays at 2
-        assert result["researcher_attempts"] == 2, f"Expected 2 after valid, got {result['researcher_attempts']}"
+        assert result["researcher_attempts"] == 2, (
+            f"Expected 2 after valid, got {result['researcher_attempts']}"
+        )
 
         # 4. Sub-query was revised on each retry (check the sequence of queries passed to run_research)
         called_queries = [call.args[0] for call in run_research_mock.call_args_list]
@@ -178,8 +184,12 @@ class TestRetryLoopIntegration:
             if call.args[0] == "validator"
         ]
         # First two should be "invalid_retry", last should be "valid_advance" or "valid_done"
-        assert validator_exits.count("invalid_retry") == 2, f"Expected 2 invalid_retry, got {validator_exits.count('invalid_retry')}"
-        assert any(s in ["valid_advance", "valid_done"] for s in validator_exits), f"Expected final valid status, got {validator_exits}"
+        assert validator_exits.count("invalid_retry") == 2, (
+            f"Expected 2 invalid_retry, got {validator_exits.count('invalid_retry')}"
+        )
+        assert any(s in ["valid_advance", "valid_done"] for s in validator_exits), (
+            f"Expected final valid status, got {validator_exits}"
+        )
 
     async def test_all_attempts_fail_then_exhausted(
         self, initial_state, mock_logging, mock_planner, mock_synthesizer_llm
@@ -196,9 +206,7 @@ class TestRetryLoopIntegration:
         bad_result = _make_research_result("quantum error correction surface codes", [])
         run_research_mock = AsyncMock(return_value=bad_result)
 
-        with patch(
-            "mcp_research_agent_system.agents.graph.run_research", run_research_mock
-        ):
+        with patch("mcp_research_agent_system.agents.graph.run_research", run_research_mock):
             graph = build_graph()
             result = await graph.ainvoke(initial_state)
 
@@ -213,11 +221,15 @@ class TestRetryLoopIntegration:
         )
 
         # 3. Validation status is invalid (exhausted)
-        assert result["validation_status"] == "invalid", f"Expected invalid, got {result['validation_status']}"
+        assert result["validation_status"] == "invalid", (
+            f"Expected invalid, got {result['validation_status']}"
+        )
 
         # 4. Graph proceeds to synthesizer (no infinite loop)
         logged_nodes = [call.args[0] for call in mock_logging.log_node_entry.call_args_list]
-        assert "synthesizer" in logged_nodes, "Synthesizer should be invoked even when all attempts fail"
+        assert "synthesizer" in logged_nodes, (
+            "Synthesizer should be invoked even when all attempts fail"
+        )
 
         # 5. Check that validated_findings is empty (no valid results accumulated)
         assert len(result["validated_findings"]) == 0, "Should have zero validated findings"
@@ -236,7 +248,9 @@ class TestRetryLoopIntegration:
             for call in mock_logging.log_node_exit.call_args_list
             if call.args[0] == "validator"
         ]
-        assert all(s == "invalid_retry" for s in validator_exits), f"All validator exits should be invalid_retry, got {validator_exits}"
+        assert all(s == "invalid_retry" for s in validator_exits), (
+            f"All validator exits should be invalid_retry, got {validator_exits}"
+        )
 
     @pytest.fixture
     def multi_query_state(self) -> ResearchState:
@@ -277,7 +291,7 @@ class TestRetryLoopIntegration:
         # Query 0: good result on first try
         good_q0 = _make_research_result(
             "quantum error correction surface codes",
-            [_make_paper("Surface Codes", "Surface codes for quantum error correction.")]
+            [_make_paper("Surface Codes", "Surface codes for quantum error correction.")],
         )
         # Query 1: all bad (3 attempts)
         bad_q1 = _make_research_result("impossible query xyz", [])
@@ -288,20 +302,24 @@ class TestRetryLoopIntegration:
         results_sequence = [good_q0, bad_q1, bad_q1, bad_q1]
         run_research_mock = AsyncMock(side_effect=results_sequence)
 
-        with patch(
-            "mcp_research_agent_system.agents.graph.run_research", run_research_mock
-        ):
+        with patch("mcp_research_agent_system.agents.graph.run_research", run_research_mock):
             graph = build_graph()
             result = await graph.ainvoke(multi_query_state)
 
         # Total researcher calls: 1 (q0) + 3 (q1 exhausted) = 4
-        assert run_research_mock.call_count == 4, f"Expected 4 calls, got {run_research_mock.call_count}"
+        assert run_research_mock.call_count == 4, (
+            f"Expected 4 calls, got {run_research_mock.call_count}"
+        )
 
         # Should have 1 validated finding (q0 succeeded, q1 exhausted without success)
-        assert len(result["validated_findings"]) == 1, f"Expected 1 validated finding, got {len(result['validated_findings'])}"
+        assert len(result["validated_findings"]) == 1, (
+            f"Expected 1 validated finding, got {len(result['validated_findings'])}"
+        )
 
         # Current query index should be 1 (q1 was being processed when exhausted)
-        assert result["current_query_index"] == 1, f"Expected index 1, got {result['current_query_index']}"
+        assert result["current_query_index"] == 1, (
+            f"Expected index 1, got {result['current_query_index']}"
+        )
 
         # Graph proceeds to synthesizer
         logged_nodes = [call.args[0] for call in mock_logging.log_node_entry.call_args_list]
@@ -330,9 +348,7 @@ class TestRetryLoopIntegration:
 
         run_research_mock = AsyncMock(side_effect=[bad_empty, bad_offtopic, good_result])
 
-        with patch(
-            "mcp_research_agent_system.agents.graph.run_research", run_research_mock
-        ):
+        with patch("mcp_research_agent_system.agents.graph.run_research", run_research_mock):
             graph = build_graph()
             await graph.ainvoke(initial_state)
 
@@ -354,7 +370,9 @@ class TestRetryLoopIntegration:
         # For "no results" failure, it should try more specific terms
         # For "off-topic" failure, it should add "survey"
         # The exact strings depend on _suggest_revised_query implementation
-        assert "quantum" in q1 or "error" in q1 or "correction" in q1, "Revised query should retain key terms"
+        assert "quantum" in q1 or "error" in q1 or "correction" in q1, (
+            "Revised query should retain key terms"
+        )
 
     async def test_trace_log_contains_expected_events(
         self, initial_state, mock_logging, mock_planner, mock_synthesizer_llm
@@ -373,9 +391,7 @@ class TestRetryLoopIntegration:
 
         run_research_mock = AsyncMock(side_effect=[bad_empty, bad_offtopic, good_result])
 
-        with patch(
-            "mcp_research_agent_system.agents.graph.run_research", run_research_mock
-        ):
+        with patch("mcp_research_agent_system.agents.graph.run_research", run_research_mock):
             graph = build_graph()
             await graph.ainvoke(initial_state)
 
@@ -386,10 +402,12 @@ class TestRetryLoopIntegration:
             if args and len(args) >= 2:
                 payload = args[1]
                 if isinstance(payload, dict) and "node_name" in payload:
-                    all_events.append({
-                        "event_type": args[0],
-                        "node": payload["node_name"],
-                    })
+                    all_events.append(
+                        {
+                            "event_type": args[0],
+                            "node": payload["node_name"],
+                        }
+                    )
 
         # Also collect from log_node_entry
         node_entries = [call.args[0] for call in mock_logging.log_node_entry.call_args_list]
@@ -424,9 +442,7 @@ class TestRetryLoopEdgeCases:
     def edge_case_mock_planner(self):
         """Mock planner for edge case tests."""
         with patch("mcp_research_agent_system.agents.graph.decompose_goal") as mock_decompose:
-            mock_decompose.return_value = MagicMock(
-                sub_queries=["original query"]
-            )
+            mock_decompose.return_value = MagicMock(sub_queries=["original query"])
             yield mock_decompose
 
     @pytest.fixture
@@ -446,9 +462,11 @@ class TestRetryLoopEdgeCases:
         from mcp_research_agent_system.agents.synthesizer import SynthesizedReport
 
         mock_synthesizer_structured = AsyncMock()
-        mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-            report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
-        ))
+        mock_synthesizer_structured.ainvoke = AsyncMock(
+            return_value=SynthesizedReport(
+                report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+            )
+        )
 
         def synthesizer_get_llm():
             mock_llm = MagicMock()
@@ -460,9 +478,7 @@ class TestRetryLoopEdgeCases:
         ):
             yield mock_synthesizer_structured
 
-    async def test_validator_node_directly_updates_sub_query(
-        self, edge_case_state, mock_logging
-    ):
+    async def test_validator_node_directly_updates_sub_query(self, edge_case_state, mock_logging):
         """Test validator_node directly updates sub_query on retry."""
         from mcp_research_agent_system.agents.graph import validator_node
 
@@ -515,9 +531,7 @@ class TestRetryLoopEdgeCases:
         bad_result = _make_research_result("quantum error correction surface codes", [])
         run_research_mock = AsyncMock(return_value=bad_result)
 
-        with patch(
-            "mcp_research_agent_system.agents.graph.run_research", run_research_mock
-        ):
+        with patch("mcp_research_agent_system.agents.graph.run_research", run_research_mock):
             graph = build_graph()
             result = await graph.ainvoke(edge_case_state)
 
@@ -528,4 +542,3 @@ class TestRetryLoopEdgeCases:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

@@ -23,7 +23,9 @@ class SearchPapersInput(BaseModel):
     query: str = Field(..., description="Search query string")
     category: str | None = Field(None, description="arXiv category filter (e.g., 'cs.AI')")
     max_results: int = Field(10, ge=1, le=100, description="Maximum number of results")
-    date_from: str | None = Field(None, description="Only return papers after this date (ISO 8601 format)")
+    date_from: str | None = Field(
+        None, description="Only return papers after this date (ISO 8601 format)"
+    )
 
 
 class GetPaperDetailsInput(BaseModel):
@@ -197,6 +199,7 @@ async def _handle_get_paper_details(arguments: dict[str, Any]) -> types.CallTool
 
         # Convert row to Paper object
         from ..cache import _db_row_to_paper
+
         paper = _db_row_to_paper(row)
         paper_output = _paper_to_output(paper)
 

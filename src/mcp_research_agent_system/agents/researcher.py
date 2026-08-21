@@ -174,7 +174,11 @@ async def run_research(sub_query: str, settings: Settings | None = None) -> Rese
                 except ValidationError as e:
                     raise ResearcherError(
                         f"Failed to parse search_papers result: {e}",
-                        {"sub_query": sub_query, "tool": "search_papers", "raw": search_result.structured_content},
+                        {
+                            "sub_query": sub_query,
+                            "tool": "search_papers",
+                            "raw": search_result.structured_content,
+                        },
                     ) from e
 
                 # Call get_cached_summary tool (to find related prior cached research)
@@ -204,7 +208,9 @@ async def run_research(sub_query: str, settings: Settings | None = None) -> Rese
                                 "is_error": cached_result.is_error,
                                 "structured_content": cached_result.structured_content,
                                 "content": [
-                                    c.model_dump(mode="json") if hasattr(c, "model_dump") else str(c)
+                                    c.model_dump(mode="json")
+                                    if hasattr(c, "model_dump")
+                                    else str(c)
                                     for c in cached_result.content
                                     if c is not None
                                 ],
@@ -214,7 +220,9 @@ async def run_research(sub_query: str, settings: Settings | None = None) -> Rese
 
                     if not cached_result.is_error and cached_result.structured_content:
                         try:
-                            cached_output = GetCachedSummaryResult(**cached_result.structured_content)
+                            cached_output = GetCachedSummaryResult(
+                                **cached_result.structured_content
+                            )
                             cached_summaries = cached_output.cached_summaries
                         except ValidationError as e:
                             logging_utils.log_event(

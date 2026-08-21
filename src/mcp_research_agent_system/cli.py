@@ -26,9 +26,9 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  research-agent \"What are the latest advances in transformer architectures?\"\n"
-            "  research-agent \"Impact of quantum computing on cryptography\" --output report.md\n"
-            "  research-agent \"LLM alignment techniques\" --verbose\n"
+            '  research-agent "What are the latest advances in transformer architectures?"\n'
+            '  research-agent "Impact of quantum computing on cryptography" --output report.md\n'
+            '  research-agent "LLM alignment techniques" --verbose\n'
         ),
     )
     parser.add_argument(
@@ -105,7 +105,11 @@ async def run_pipeline(goal: str, verbose: bool = False) -> str:
                         )
                     elif node_name == "researcher":
                         idx = node_output.get("current_query_index", 0)
-                        query = node_output.get("sub_queries", [""])[idx] if idx < len(node_output.get("sub_queries", [])) else ""
+                        query = (
+                            node_output.get("sub_queries", [""])[idx]
+                            if idx < len(node_output.get("sub_queries", []))
+                            else ""
+                        )
                         attempts = node_output.get("researcher_attempts", 0)
                         researcher_output = node_output.get("researcher_output", [])
                         print_verbose_step(
@@ -146,7 +150,9 @@ async def run_pipeline(goal: str, verbose: bool = False) -> str:
                             console,
                             "synthesizer",
                             "success",
-                                f"Report generated ({len(synth_report)} chars)" if synth_report else "No report generated",
+                            f"Report generated ({len(synth_report)} chars)"
+                            if synth_report
+                            else "No report generated",
                         )
             # Get final state after streaming
             final_state = await graph.ainvoke(initial_state)

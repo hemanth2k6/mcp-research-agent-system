@@ -102,9 +102,11 @@ class TestSynthesizeReport:
         """Test successful report generation via structured output on first attempt."""
         mock_llm = AsyncMock(spec=ChatOpenAI)
         mock_structured = AsyncMock()
-        mock_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-            report="# Research Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
-        ))
+        mock_structured.ainvoke = AsyncMock(
+            return_value=SynthesizedReport(
+                report="# Research Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+            )
+        )
         mock_llm.with_structured_output.return_value = mock_structured
 
         result = await synthesize_report("Test research goal", SAMPLE_FINDINGS, llm=mock_llm)
@@ -165,7 +167,9 @@ class TestSynthesizeReport:
         mock_llm.with_structured_output.return_value = mock_structured
 
         mock_response = AsyncMock()
-        mock_response.content = 'Here is the report: {"report": "# Surrounded Report\\n\\nContent"} end.'
+        mock_response.content = (
+            'Here is the report: {"report": "# Surrounded Report\\n\\nContent"} end.'
+        )
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
         result = await synthesize_report("Test goal", SAMPLE_FINDINGS, llm=mock_llm)
@@ -233,7 +237,9 @@ class TestSynthesizeReport:
         """Test that empty findings triggers the insufficient data path without LLM call."""
         mock_llm = AsyncMock(spec=ChatOpenAI)
         mock_structured = AsyncMock()
-        mock_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(report="Should not be called"))
+        mock_structured.ainvoke = AsyncMock(
+            return_value=SynthesizedReport(report="Should not be called")
+        )
         mock_llm.with_structured_output.return_value = mock_structured
 
         result = await synthesize_report("Test goal", [], llm=mock_llm)
@@ -256,9 +262,9 @@ class TestSynthesizeReport:
 
             mock_llm = AsyncMock(spec=ChatOpenAI)
             mock_structured = AsyncMock()
-            mock_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-                report="# Test Report\n\n## Overview\nTest content"
-            ))
+            mock_structured.ainvoke = AsyncMock(
+                return_value=SynthesizedReport(report="# Test Report\n\n## Overview\nTest content")
+            )
             mock_llm.with_structured_output.return_value = mock_structured
 
             await synthesize_report("Test goal", SAMPLE_FINDINGS, llm=mock_llm)
@@ -288,11 +294,12 @@ class TestSynthesizerNodeIntegration:
 
         # Mock the planner decomposition
         from mcp_research_agent_system.agents.planner import PlannerDecomposition
+
         mock_decomposition = PlannerDecomposition(
             sub_queries=[
                 "transformer architecture NLP",
                 "attention mechanism improvements",
-                "efficient transformer variants"
+                "efficient transformer variants",
             ]
         )
 
@@ -335,11 +342,15 @@ class TestSynthesizerNodeIntegration:
 
         # Mock synchronous invoke for planner fallback path
         mock_planner_response = MagicMock()
-        mock_planner_response.content = json.dumps({"sub_queries": [
-            "transformer architecture NLP",
-            "attention mechanism improvements",
-            "efficient transformer variants"
-        ]})
+        mock_planner_response.content = json.dumps(
+            {
+                "sub_queries": [
+                    "transformer architecture NLP",
+                    "attention mechanism improvements",
+                    "efficient transformer variants",
+                ]
+            }
+        )
         mock_llm.invoke = MagicMock(return_value=mock_planner_response)
 
         # For planner - structured output
@@ -349,8 +360,9 @@ class TestSynthesizerNodeIntegration:
         # For validator - not called if heuristic passes (we'll make sure it does)
         # For synthesizer - structured output
         mock_synthesizer_structured = AsyncMock()
-        mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-            report="""# Research Report: Transformer Architectures for NLP
+        mock_synthesizer_structured.ainvoke = AsyncMock(
+            return_value=SynthesizedReport(
+                report="""# Research Report: Transformer Architectures for NLP
 
 ## Overview
 This report examines transformer architectures for natural language processing.
@@ -374,7 +386,8 @@ Surveys and papers on efficient transformer variants.
 - Long-context handling in efficient transformers remains an open challenge.
 - Multilingual transfer in novel architectures needs more exploration.
 """
-        ))
+            )
+        )
 
         # Switch between planner and synthesizer structured outputs
         call_count = {"planner": 0, "synthesizer": 0}
@@ -402,6 +415,7 @@ Surveys and papers on efficient transformer variants.
 
             # Create ResearchResult-like object
             from mcp_research_agent_system.agents.researcher import PaperResult, ResearchResult
+
             paper_objects = [
                 PaperResult(
                     arxiv_id=p["arxiv_id"],
@@ -412,7 +426,8 @@ Surveys and papers on efficient transformer variants.
                     published_date=p["published_date"],
                     updated_date=p["updated_date"],
                     pdf_url=p["pdf_url"],
-                ) for p in papers
+                )
+                for p in papers
             ]
             return ResearchResult(
                 sub_query=sub_query,
@@ -422,10 +437,12 @@ Surveys and papers on efficient transformer variants.
             )
 
         # Patch get_llm in the modules that use it (planner, validator, synthesizer)
-        with patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm), \
-             patch("mcp_research_agent_system.agents.synthesizer.get_llm", return_value=mock_llm), \
-             patch("mcp_research_agent_system.agents.graph.run_research", mock_run_research), \
-             patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log:
+        with (
+            patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm),
+            patch("mcp_research_agent_system.agents.synthesizer.get_llm", return_value=mock_llm),
+            patch("mcp_research_agent_system.agents.graph.run_research", mock_run_research),
+            patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
+        ):
             mock_log.log_event = MagicMock()
 
             graph = build_graph()
@@ -453,6 +470,7 @@ Surveys and papers on efficient transformer variants.
         state = create_initial_state("Research: impossible topic xyz123")
 
         from mcp_research_agent_system.agents.planner import PlannerDecomposition
+
         mock_decomposition = PlannerDecomposition(
             sub_queries=[
                 "impossible topic xyz123 variant 1",
@@ -465,11 +483,15 @@ Surveys and papers on efficient transformer variants.
 
         # Mock synchronous invoke for planner fallback path
         mock_planner_response = MagicMock()
-        mock_planner_response.content = json.dumps({"sub_queries": [
-            "impossible topic xyz123 variant 1",
-            "impossible topic xyz123 variant 2",
-            "impossible topic xyz123 variant 3",
-        ]})
+        mock_planner_response.content = json.dumps(
+            {
+                "sub_queries": [
+                    "impossible topic xyz123 variant 1",
+                    "impossible topic xyz123 variant 2",
+                    "impossible topic xyz123 variant 3",
+                ]
+            }
+        )
         mock_llm.invoke = MagicMock(return_value=mock_planner_response)
 
         mock_planner_structured = AsyncMock()
@@ -478,7 +500,9 @@ Surveys and papers on efficient transformer variants.
         mock_synthesizer_structured = AsyncMock()
         # Synthesizer should NOT be called with structured output for empty findings
         # but we'll set it up anyway in case
-        mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(report="Should not be used"))
+        mock_synthesizer_structured.ainvoke = AsyncMock(
+            return_value=SynthesizedReport(report="Should not be used")
+        )
 
         def with_structured_output_side_effect(model_class):
             if model_class.__name__ == "PlannerDecomposition":
@@ -492,6 +516,7 @@ Surveys and papers on efficient transformer variants.
         # Mock run_research to return empty findings
         async def mock_run_research(sub_query, settings=None):
             from mcp_research_agent_system.agents.researcher import ResearchResult
+
             return ResearchResult(
                 sub_query=sub_query,
                 papers=[],
@@ -500,10 +525,12 @@ Surveys and papers on efficient transformer variants.
             )
 
         # Patch get_llm in the modules that use it
-        with patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm), \
-             patch("mcp_research_agent_system.agents.synthesizer.get_llm", return_value=mock_llm), \
-             patch("mcp_research_agent_system.agents.graph.run_research", mock_run_research), \
-             patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log:
+        with (
+            patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm),
+            patch("mcp_research_agent_system.agents.synthesizer.get_llm", return_value=mock_llm),
+            patch("mcp_research_agent_system.agents.graph.run_research", mock_run_research),
+            patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
+        ):
             mock_log.log_event = MagicMock()
 
             graph = build_graph()
@@ -562,7 +589,9 @@ class TestSynthesizeReportFallbackPaths:
         mock_llm.with_structured_output.return_value = mock_structured
 
         mock_response = AsyncMock()
-        mock_response.content = '{"report": "# Fallback Report\\n\\n## Overview\\nDirect JSON parse"}'
+        mock_response.content = (
+            '{"report": "# Fallback Report\\n\\n## Overview\\nDirect JSON parse"}'
+        )
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
         result = await synthesize_report("Test goal", sample_findings, llm=mock_llm)
@@ -580,7 +609,9 @@ class TestSynthesizeReportFallbackPaths:
         mock_llm.with_structured_output.return_value = mock_structured
 
         mock_response = AsyncMock()
-        mock_response.content = '```json\n{"report": "# Markdown Report\\n\\nContent from markdown"}\n```'
+        mock_response.content = (
+            '```json\n{"report": "# Markdown Report\\n\\nContent from markdown"}\n```'
+        )
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
         result = await synthesize_report("Test goal", sample_findings, llm=mock_llm)

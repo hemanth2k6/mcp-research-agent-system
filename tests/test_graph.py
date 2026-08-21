@@ -57,9 +57,11 @@ async def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
 
     # For synthesizer - structured output
     mock_synthesizer_structured = AsyncMock()
-    mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-        report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
-    ))
+    mock_synthesizer_structured.ainvoke = AsyncMock(
+        return_value=SynthesizedReport(
+            report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+        )
+    )
 
     # For planner - need to mock invoke for fallback
     mock_planner_response = MagicMock()
@@ -68,11 +70,13 @@ async def _run_graph_and_get_logs(state: ResearchState) -> tuple[dict, list]:
 
     # For validator - mock LLM judge structured output
     mock_validator_structured = AsyncMock()
-    mock_validator_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
-        is_valid=True,
-        reason="Papers are relevant to the sub-query",
-        revised_query=None,
-    ))
+    mock_validator_structured.ainvoke = AsyncMock(
+        return_value=ValidationOutcome(
+            is_valid=True,
+            reason="Papers are relevant to the sub-query",
+            revised_query=None,
+        )
+    )
 
     def with_structured_output_side_effect(model_class):
         if model_class.__name__ == "SynthesizedReport":
@@ -123,20 +127,24 @@ def mock_graph_setup():
 
     mock_llm = MagicMock()
     mock_synthesizer_structured = AsyncMock()
-    mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-        report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
-    ))
+    mock_synthesizer_structured.ainvoke = AsyncMock(
+        return_value=SynthesizedReport(
+            report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+        )
+    )
 
     mock_planner_response = MagicMock()
     mock_planner_response.content = '{"sub_queries": ["sub-query 1", "sub-query 2", "sub-query 3"]}'
     mock_llm.invoke = MagicMock(return_value=mock_planner_response)
 
     mock_validator_structured = AsyncMock()
-    mock_validator_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
-        is_valid=True,
-        reason="Papers are relevant to the sub-query",
-        revised_query=None,
-    ))
+    mock_validator_structured.ainvoke = AsyncMock(
+        return_value=ValidationOutcome(
+            is_valid=True,
+            reason="Papers are relevant to the sub-query",
+            revised_query=None,
+        )
+    )
 
     def with_structured_output_side_effect(model_class):
         if model_class.__name__ == "SynthesizedReport":
@@ -230,20 +238,24 @@ async def test_validator_node_exhausted_attempts():
 
     mock_llm = MagicMock()
     mock_synthesizer_structured = AsyncMock()
-    mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-        report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
-    ))
+    mock_synthesizer_structured.ainvoke = AsyncMock(
+        return_value=SynthesizedReport(
+            report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+        )
+    )
 
     mock_planner_response = MagicMock()
     mock_planner_response.content = '{"sub_queries": ["hard query"]}'
     mock_llm.invoke = MagicMock(return_value=mock_planner_response)
 
     mock_validator_structured = AsyncMock()
-    mock_validator_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
-        is_valid=False,
-        reason="Papers are not relevant",
-        revised_query="revised query",
-    ))
+    mock_validator_structured.ainvoke = AsyncMock(
+        return_value=ValidationOutcome(
+            is_valid=False,
+            reason="Papers are not relevant",
+            revised_query="revised query",
+        )
+    )
 
     def with_structured_output_side_effect(model_class):
         if model_class.__name__ == "SynthesizedReport":
@@ -304,11 +316,13 @@ async def test_synthesizer_node_error_handling():
     mock_llm.invoke = MagicMock(return_value=mock_planner_response)
 
     mock_validator_structured = AsyncMock()
-    mock_validator_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
-        is_valid=True,
-        reason="Papers are relevant to the sub-query",
-        revised_query=None,
-    ))
+    mock_validator_structured.ainvoke = AsyncMock(
+        return_value=ValidationOutcome(
+            is_valid=True,
+            reason="Papers are relevant to the sub-query",
+            revised_query=None,
+        )
+    )
 
     def with_structured_output_side_effect(model_class):
         if model_class.__name__ == "SynthesizedReport":
@@ -351,7 +365,8 @@ async def test_synthesizer_node_error_handling():
         # Error should be logged via log_node_error (which calls log_event internally)
         # Check log_node_error was called with "synthesizer" and the error
         error_logged = any(
-            call.args[0] == "synthesizer" and ("LLM failed" in str(call.args[1]) or "synthesize" in str(call.args[1]).lower())
+            call.args[0] == "synthesizer"
+            and ("LLM failed" in str(call.args[1]) or "synthesize" in str(call.args[1]).lower())
             for call in mock_log.log_node_error.call_args_list
         )
         assert error_logged
@@ -408,8 +423,10 @@ def test_graph_runs_single_query(single_query_state):
     assert "validator" in logged_nodes
     assert "synthesizer" in logged_nodes
     assert logged_nodes.index("planner") < logged_nodes.index("researcher")
-    assert logged_nodes.index("researcher") < logged_nodes.index("synthesizer") or \
-           logged_nodes[-1] == "synthesizer"
+    assert (
+        logged_nodes.index("researcher") < logged_nodes.index("synthesizer")
+        or logged_nodes[-1] == "synthesizer"
+    )
 
 
 def test_graph_runs_multi_query(multi_query_state):

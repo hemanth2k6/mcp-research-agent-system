@@ -98,7 +98,9 @@ def format_event_rich(event: dict[str, Any]) -> tuple[str, str, str, str, str, s
         duration = payload.get("duration_ms")
         status = payload.get("status", "")
 
-        state_str = ", ".join(f"{k}={v}" for k, v in state_snapshot.items()) if state_snapshot else ""
+        state_str = (
+            ", ".join(f"{k}={v}" for k, v in state_snapshot.items()) if state_snapshot else ""
+        )
         duration_str = f"{duration:.1f}ms" if duration is not None else ""
         return timestamp, event_type, node_name, status, duration_str, state_str
 
@@ -118,7 +120,9 @@ def format_event_rich(event: dict[str, Any]) -> tuple[str, str, str, str, str, s
 
 def print_trace_plain(events: list[dict[str, Any]]) -> None:
     """Print trace events in plain text format."""
-    print(f"{'TIMESTAMP':<14} | {'EVENT_TYPE':<12} | {'NODE/TOOL':<12} | {'STATUS':<12} | {'DURATION':<10} | DETAILS")  # noqa: T201
+    print(
+        f"{'TIMESTAMP':<14} | {'EVENT_TYPE':<12} | {'NODE/TOOL':<12} | {'STATUS':<12} | {'DURATION':<10} | DETAILS"
+    )  # noqa: T201
     print("-" * 120)  # noqa: T201
     for event in events:
         print(format_event_plain(event))  # noqa: T201
@@ -163,7 +167,10 @@ def print_trace_rich(events: list[dict[str, Any]]) -> None:
 def main() -> int:
     """Main entry point for the trace viewer CLI."""
     if len(sys.argv) < 2:
-        print("Usage: python -m mcp_research_agent_system.trace_viewer <trace_file.jsonl>", file=sys.stderr)  # noqa: T201
+        print(
+            "Usage: python -m mcp_research_agent_system.trace_viewer <trace_file.jsonl>",
+            file=sys.stderr,
+        )  # noqa: T201
         return 1
 
     trace_file = sys.argv[1]

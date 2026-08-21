@@ -83,14 +83,21 @@ class TestRunPipeline:
             events = [
                 {"planner": {"sub_queries": ["q1", "q2"]}},
                 {"researcher": {"current_query_index": 0, "researcher_output": [{"paper": "p1"}]}},
-                {"validator": {"validation_status": "valid", "validated_findings": [{"paper": "p1"}]}},
+                {
+                    "validator": {
+                        "validation_status": "valid",
+                        "validated_findings": [{"paper": "p1"}],
+                    }
+                },
                 {"synthesizer": {"final_report": "# Report"}},
             ]
             for e in events:
                 yield e
 
         mock_graph.astream = astream
-        mock_graph.ainvoke = AsyncMock(return_value={"final_report": "# Final Report", "error": None})
+        mock_graph.ainvoke = AsyncMock(
+            return_value={"final_report": "# Final Report", "error": None}
+        )
 
         with patch("mcp_research_agent_system.cli.build_graph", return_value=mock_graph):
             with patch("mcp_research_agent_system.cli.configure_logging"):
@@ -155,7 +162,9 @@ class TestRunPipeline:
     async def test_error_in_state(self) -> None:
         """Test error propagated from state."""
         mock_graph = AsyncMock()
-        mock_graph.ainvoke = AsyncMock(return_value={"final_report": None, "error": "Validation failed"})
+        mock_graph.ainvoke = AsyncMock(
+            return_value={"final_report": None, "error": "Validation failed"}
+        )
 
         with patch("mcp_research_agent_system.cli.build_graph", return_value=mock_graph):
             with patch("mcp_research_agent_system.cli.configure_logging"):
@@ -171,7 +180,9 @@ class TestMain:
         """Test successful run exits with code 0 and prints report."""
         mock_report = "# Test Report\n\nContent here."
 
-        with patch("mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock) as mock_run:
+        with patch(
+            "mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock
+        ) as mock_run:
             mock_run.return_value = mock_report
 
             with patch.object(sys, "argv", ["research-agent", "test goal"]):
@@ -186,7 +197,9 @@ class TestMain:
         mock_report = "# Test Report\n\nContent here."
         output_file = tmp_path / "report.md"
 
-        with patch("mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock) as mock_run:
+        with patch(
+            "mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock
+        ) as mock_run:
             mock_run.return_value = mock_report
 
             with patch.object(sys, "argv", ["research-agent", "test goal", "-o", str(output_file)]):
@@ -198,7 +211,9 @@ class TestMain:
 
     def test_error_exits_nonzero(self, capsys: pytest.CaptureFixture) -> None:
         """Test error exits with non-zero code and prints error."""
-        with patch("mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock) as mock_run:
+        with patch(
+            "mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock
+        ) as mock_run:
             mock_run.side_effect = RuntimeError("Pipeline failed: test error")
 
             with patch.object(sys, "argv", ["research-agent", "test goal"]):
@@ -211,7 +226,9 @@ class TestMain:
 
     def test_keyboard_interrupt_exits_130(self, capsys: pytest.CaptureFixture) -> None:
         """Test KeyboardInterrupt exits with code 130."""
-        with patch("mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock) as mock_run:
+        with patch(
+            "mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock
+        ) as mock_run:
             mock_run.side_effect = KeyboardInterrupt()
 
             with patch.object(sys, "argv", ["research-agent", "test goal"]):
@@ -225,7 +242,9 @@ class TestMain:
         """Test verbose mode shows progress output."""
         mock_report = "# Report"
 
-        with patch("mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock) as mock_run:
+        with patch(
+            "mcp_research_agent_system.cli.run_pipeline", new_callable=AsyncMock
+        ) as mock_run:
             mock_run.return_value = mock_report
 
             with patch.object(sys, "argv", ["research-agent", "test goal", "-v"]):

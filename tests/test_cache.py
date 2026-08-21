@@ -135,7 +135,9 @@ async def test_cached_search_expiry(test_settings, sample_papers, mock_arxiv_cli
 
 
 @pytest.mark.asyncio
-async def test_cached_search_different_params_different_cache(test_settings, sample_papers, mock_arxiv_client):
+async def test_cached_search_different_params_different_cache(
+    test_settings, sample_papers, mock_arxiv_client
+):
     """Test that different query parameters create separate cache entries."""
     # Search 1
     await cached_search(
@@ -290,7 +292,9 @@ async def test_cached_search_updates_existing_paper(test_settings, mock_arxiv_cl
     )
 
     with get_connection(test_settings) as conn:
-        row = conn.execute("SELECT title FROM papers WHERE arxiv_id = ?", ("2401.12345v1",)).fetchone()
+        row = conn.execute(
+            "SELECT title FROM papers WHERE arxiv_id = ?", ("2401.12345v1",)
+        ).fetchone()
 
     assert row["title"] == "Updated Title"
 
@@ -301,9 +305,7 @@ async def test_init_db_creates_tables(test_settings):
     init_db(test_settings)
 
     with get_connection(test_settings) as conn:
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
 
     table_names = {row["name"] for row in tables}
     assert "papers" in table_names
@@ -316,9 +318,7 @@ async def test_init_db_creates_indexes(test_settings):
     init_db(test_settings)
 
     with get_connection(test_settings) as conn:
-        indexes = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index'"
-        ).fetchall()
+        indexes = conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
 
     index_names = {row["name"] for row in indexes}
     assert "idx_papers_category" in index_names

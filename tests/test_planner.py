@@ -261,9 +261,7 @@ class TestLLMJudgeFallbackParsing:
             raw_tool_calls=[],
         )
 
-    async def test_structured_output_fails_then_fallback_parses_direct_json(
-        self, ambiguous_result
-    ):
+    async def test_structured_output_fails_then_fallback_parses_direct_json(self, ambiguous_result):
         """Structured output raises; fallback llm.ainvoke returns valid JSON (lines 224-230)."""
         mock_llm = AsyncMock(spec=ChatOpenAI)
         mock_structured = AsyncMock()
@@ -274,13 +272,12 @@ class TestLLMJudgeFallbackParsing:
         mock_response.content = '{"is_valid": true, "reason": "relevant", "revised_query": null}'
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch(
-            "mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm
-        ):
+        with patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm):
             from mcp_research_agent_system.agents.planner import validate_research_output
 
             outcome = await validate_research_output(
-                "graph neural networks for molecular property prediction drug discovery", ambiguous_result
+                "graph neural networks for molecular property prediction drug discovery",
+                ambiguous_result,
             )
 
         assert outcome.is_valid is True
@@ -300,13 +297,12 @@ class TestLLMJudgeFallbackParsing:
         )
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch(
-            "mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm
-        ):
+        with patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm):
             from mcp_research_agent_system.agents.planner import validate_research_output
 
             outcome = await validate_research_output(
-                "graph neural networks for molecular property prediction drug discovery", ambiguous_result
+                "graph neural networks for molecular property prediction drug discovery",
+                ambiguous_result,
             )
 
         assert outcome.is_valid is False
@@ -323,13 +319,12 @@ class TestLLMJudgeFallbackParsing:
         mock_response.content = "completely unparseable"
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch(
-            "mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm
-        ):
+        with patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm):
             from mcp_research_agent_system.agents.planner import validate_research_output
 
             outcome = await validate_research_output(
-                "graph neural networks for molecular property prediction drug discovery", ambiguous_result
+                "graph neural networks for molecular property prediction drug discovery",
+                ambiguous_result,
             )
 
         # Defaults to invalid with a generic revised query after retries exhausted

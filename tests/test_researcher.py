@@ -127,14 +127,14 @@ async def test_run_research_no_results(test_settings):
     empty_result = types.CallToolResult(
         content=[types.TextContent(type="text", text="")],
         structured_content={"papers": []},
-        is_error=False
+        is_error=False,
     )
 
     # Create a successful get_cached_summary result
     empty_cached_result = types.CallToolResult(
         content=[types.TextContent(type="text", text="")],
         structured_content={"cached_summaries": []},
-        is_error=False
+        is_error=False,
     )
 
     # Return empty for search_papers, empty for get_cached_summary
@@ -151,12 +151,15 @@ async def test_run_research_no_results(test_settings):
     mock_session_ctx.__aenter__.return_value = mock_session
     mock_session_ctx.__aexit__.return_value = False
 
-    with patch(
-        "mcp_research_agent_system.agents.researcher.stdio_client",
-        return_value=mock_stdio_ctx,
-    ), patch(
-        "mcp_research_agent_system.agents.researcher.ClientSession",
-        return_value=mock_session_ctx,
+    with (
+        patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client",
+            return_value=mock_stdio_ctx,
+        ),
+        patch(
+            "mcp_research_agent_system.agents.researcher.ClientSession",
+            return_value=mock_session_ctx,
+        ),
     ):
         result = await run_research("nonexistent topic xyz123 unique", test_settings)
 
@@ -205,9 +208,7 @@ async def test_run_research_server_fails_to_start():
     )
 
     # Mock stdio_client to raise FileNotFoundError
-    with patch(
-        "mcp_research_agent_system.agents.researcher.stdio_client"
-    ) as mock_stdio:
+    with patch("mcp_research_agent_system.agents.researcher.stdio_client") as mock_stdio:
         mock_stdio.side_effect = FileNotFoundError("No such command: bad_command")
 
         with pytest.raises(ResearcherError) as exc_info:
@@ -237,17 +238,23 @@ async def test_run_research_tool_call_times_out():
     mock_session_ctx.__aenter__.return_value = mock_session
     mock_session_ctx.__aexit__.return_value = False
 
-    with patch(
-        "mcp_research_agent_system.agents.researcher.stdio_client",
-        return_value=mock_stdio_ctx,
-    ), patch(
-        "mcp_research_agent_system.agents.researcher.ClientSession",
-        return_value=mock_session_ctx,
+    with (
+        patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client",
+            return_value=mock_stdio_ctx,
+        ),
+        patch(
+            "mcp_research_agent_system.agents.researcher.ClientSession",
+            return_value=mock_session_ctx,
+        ),
     ):
         with pytest.raises(ResearcherError) as exc_info:
             await run_research("test query", settings)
 
-        assert "timed out" in str(exc_info.value).lower() or "unexpected" in str(exc_info.value).lower()
+        assert (
+            "timed out" in str(exc_info.value).lower()
+            or "unexpected" in str(exc_info.value).lower()
+        )
 
 
 @pytest.mark.asyncio
@@ -277,12 +284,15 @@ async def test_run_research_tool_returns_error():
     mock_session_ctx.__aenter__.return_value = mock_session
     mock_session_ctx.__aexit__.return_value = False
 
-    with patch(
-        "mcp_research_agent_system.agents.researcher.stdio_client",
-        return_value=mock_stdio_ctx,
-    ), patch(
-        "mcp_research_agent_system.agents.researcher.ClientSession",
-        return_value=mock_session_ctx,
+    with (
+        patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client",
+            return_value=mock_stdio_ctx,
+        ),
+        patch(
+            "mcp_research_agent_system.agents.researcher.ClientSession",
+            return_value=mock_session_ctx,
+        ),
     ):
         with pytest.raises(ResearcherError) as exc_info:
             await run_research("test query", settings)
@@ -316,12 +326,15 @@ async def test_run_research_invalid_result_structure():
     mock_session_ctx.__aenter__.return_value = mock_session
     mock_session_ctx.__aexit__.return_value = False
 
-    with patch(
-        "mcp_research_agent_system.agents.researcher.stdio_client",
-        return_value=mock_stdio_ctx,
-    ), patch(
-        "mcp_research_agent_system.agents.researcher.ClientSession",
-        return_value=mock_session_ctx,
+    with (
+        patch(
+            "mcp_research_agent_system.agents.researcher.stdio_client",
+            return_value=mock_stdio_ctx,
+        ),
+        patch(
+            "mcp_research_agent_system.agents.researcher.ClientSession",
+            return_value=mock_session_ctx,
+        ),
     ):
         with pytest.raises(ResearcherError) as exc_info:
             await run_research("test query", settings)
@@ -335,9 +348,7 @@ async def test_run_research_permission_error():
     settings = Settings(database_path=":memory:")
 
     # Mock stdio_client to raise PermissionError
-    with patch(
-        "mcp_research_agent_system.agents.researcher.stdio_client"
-    ) as mock_stdio:
+    with patch("mcp_research_agent_system.agents.researcher.stdio_client") as mock_stdio:
         mock_stdio.side_effect = PermissionError("Permission denied: /usr/bin/python")
 
         with pytest.raises(ResearcherError) as exc_info:
@@ -399,12 +410,27 @@ class TestResearcherErrorPaths:
 
         search_result = types.CallToolResult(
             content=[types.TextContent(type="text", text="")],
-            structured_content={"papers": [{"arxiv_id": "2401.11111v1", "title": "Test", "authors": ["A"], "abstract": "A", "category": "cs.AI", "published_date": "2024-01-01", "updated_date": "2024-01-01", "pdf_url": "http://arxiv.org/pdf/2401.11111v1"}]},
-            is_error=False
+            structured_content={
+                "papers": [
+                    {
+                        "arxiv_id": "2401.11111v1",
+                        "title": "Test",
+                        "authors": ["A"],
+                        "abstract": "A",
+                        "category": "cs.AI",
+                        "published_date": "2024-01-01",
+                        "updated_date": "2024-01-01",
+                        "pdf_url": "http://arxiv.org/pdf/2401.11111v1",
+                    }
+                ]
+            },
+            is_error=False,
         )
 
         # First call succeeds, second throws exception
-        mock_session.call_tool = AsyncMock(side_effect=[search_result, Exception("cached summary timeout")])
+        mock_session.call_tool = AsyncMock(
+            side_effect=[search_result, Exception("cached summary timeout")]
+        )
 
         mock_read = AsyncMock()
         mock_write = AsyncMock()
@@ -416,15 +442,17 @@ class TestResearcherErrorPaths:
         mock_session_ctx.__aenter__.return_value = mock_session
         mock_session_ctx.__aexit__.return_value = False
 
-        with patch(
-            "mcp_research_agent_system.agents.researcher.stdio_client",
-            return_value=mock_stdio_ctx,
-        ), patch(
-            "mcp_research_agent_system.agents.researcher.ClientSession",
-            return_value=mock_session_ctx,
-        ), patch(
-            "mcp_research_agent_system.agents.researcher.logging_utils"
-        ) as mock_log:
+        with (
+            patch(
+                "mcp_research_agent_system.agents.researcher.stdio_client",
+                return_value=mock_stdio_ctx,
+            ),
+            patch(
+                "mcp_research_agent_system.agents.researcher.ClientSession",
+                return_value=mock_session_ctx,
+            ),
+            patch("mcp_research_agent_system.agents.researcher.logging_utils") as mock_log,
+        ):
             mock_log.log_event = MagicMock()
 
             result = await run_research("test query", settings)
@@ -439,7 +467,9 @@ class TestResearcherErrorPaths:
             call.args[0] == "researcher_tool_error" and "cached_summary" in str(call.args[1])
             for call in mock_log.log_event.call_args_list
         )
-        assert error_logged, "Expected researcher_tool_error to be logged for get_cached_summary failure"
+        assert error_logged, (
+            "Expected researcher_tool_error to be logged for get_cached_summary failure"
+        )
 
     @pytest.mark.asyncio
     async def test_get_cached_summary_validation_error_logged(self):
@@ -453,15 +483,28 @@ class TestResearcherErrorPaths:
 
         search_result = types.CallToolResult(
             content=[types.TextContent(type="text", text="")],
-            structured_content={"papers": [{"arxiv_id": "2401.11111v1", "title": "Test", "authors": ["A"], "abstract": "A", "category": "cs.AI", "published_date": "2024-01-01", "updated_date": "2024-01-01", "pdf_url": "http://arxiv.org/pdf/2401.11111v1"}]},
-            is_error=False
+            structured_content={
+                "papers": [
+                    {
+                        "arxiv_id": "2401.11111v1",
+                        "title": "Test",
+                        "authors": ["A"],
+                        "abstract": "A",
+                        "category": "cs.AI",
+                        "published_date": "2024-01-01",
+                        "updated_date": "2024-01-01",
+                        "pdf_url": "http://arxiv.org/pdf/2401.11111v1",
+                    }
+                ]
+            },
+            is_error=False,
         )
 
         # get_cached_summary returns invalid structured content
         cached_error_result = types.CallToolResult(
             content=[types.TextContent(type="text", text="")],
             structured_content={"wrong_key": []},  # Missing required 'cached_summaries' key
-            is_error=False
+            is_error=False,
         )
 
         mock_session.call_tool = AsyncMock(side_effect=[search_result, cached_error_result])
@@ -476,15 +519,17 @@ class TestResearcherErrorPaths:
         mock_session_ctx.__aenter__.return_value = mock_session
         mock_session_ctx.__aexit__.return_value = False
 
-        with patch(
-            "mcp_research_agent_system.agents.researcher.stdio_client",
-            return_value=mock_stdio_ctx,
-        ), patch(
-            "mcp_research_agent_system.agents.researcher.ClientSession",
-            return_value=mock_session_ctx,
-        ), patch(
-            "mcp_research_agent_system.agents.researcher.logging_utils"
-        ) as mock_log:
+        with (
+            patch(
+                "mcp_research_agent_system.agents.researcher.stdio_client",
+                return_value=mock_stdio_ctx,
+            ),
+            patch(
+                "mcp_research_agent_system.agents.researcher.ClientSession",
+                return_value=mock_session_ctx,
+            ),
+            patch("mcp_research_agent_system.agents.researcher.logging_utils") as mock_log,
+        ):
             mock_log.log_event = MagicMock()
 
             result = await run_research("test query", settings)
@@ -499,16 +544,16 @@ class TestResearcherErrorPaths:
             call.args[0] == "researcher_tool_error" and "Failed to parse" in str(call.args[1])
             for call in mock_log.log_event.call_args_list
         )
-        assert error_logged, "Expected researcher_tool_error to be logged for get_cached_summary validation failure"
+        assert error_logged, (
+            "Expected researcher_tool_error to be logged for get_cached_summary validation failure"
+        )
 
     @pytest.mark.asyncio
     async def test_file_not_found_error_wrapped(self):
         """Test FileNotFoundError from stdio_client is wrapped in ResearcherError (lines 239-243)."""
         settings = Settings(database_path=":memory:")
 
-        with patch(
-            "mcp_research_agent_system.agents.researcher.stdio_client"
-        ) as mock_stdio:
+        with patch("mcp_research_agent_system.agents.researcher.stdio_client") as mock_stdio:
             mock_stdio.side_effect = FileNotFoundError("No such file: /usr/bin/python3.12")
 
             with pytest.raises(ResearcherError) as exc_info:
@@ -526,9 +571,7 @@ class TestResearcherErrorPaths:
         """Test PermissionError from stdio_client is wrapped in ResearcherError (lines 244-248)."""
         settings = Settings(database_path=":memory:")
 
-        with patch(
-            "mcp_research_agent_system.agents.researcher.stdio_client"
-        ) as mock_stdio:
+        with patch("mcp_research_agent_system.agents.researcher.stdio_client") as mock_stdio:
             mock_stdio.side_effect = PermissionError("Permission denied: /usr/bin/python")
 
             with pytest.raises(ResearcherError) as exc_info:
@@ -564,12 +607,15 @@ class TestResearcherErrorPaths:
         mock_session_ctx.__aenter__.return_value = mock_session
         mock_session_ctx.__aexit__.return_value = False
 
-        with patch(
-            "mcp_research_agent_system.agents.researcher.stdio_client",
-            return_value=mock_stdio_ctx,
-        ), patch(
-            "mcp_research_agent_system.agents.researcher.ClientSession",
-            return_value=mock_session_ctx,
+        with (
+            patch(
+                "mcp_research_agent_system.agents.researcher.stdio_client",
+                return_value=mock_stdio_ctx,
+            ),
+            patch(
+                "mcp_research_agent_system.agents.researcher.ClientSession",
+                return_value=mock_session_ctx,
+            ),
         ):
             with pytest.raises(ResearcherError) as exc_info:
                 await run_research("test query", settings)

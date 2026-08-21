@@ -31,7 +31,9 @@ class PlannerDecomposition(BaseModel):
 class ValidationOutcome(BaseModel):
     """Structured output for research output validation."""
 
-    is_valid: bool = Field(..., description="Whether the research output is valid for the sub-query")
+    is_valid: bool = Field(
+        ..., description="Whether the research output is valid for the sub-query"
+    )
     reason: str = Field(..., description="Explanation of the validation decision")
     revised_query: str | None = Field(
         default=None,
@@ -64,6 +66,7 @@ def _parse_llm_json_response(response_content: str) -> PlannerDecomposition:
 
     # Fallback: try to extract JSON from markdown code blocks or surrounding text
     import re
+
     json_match = re.search(r"\{.*\}", response_content, re.DOTALL)
     if json_match:
         try:
@@ -72,7 +75,9 @@ def _parse_llm_json_response(response_content: str) -> PlannerDecomposition:
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
 
-    raise PlannerError(f"Failed to parse LLM response as valid PlannerDecomposition: {response_content[:200]}")
+    raise PlannerError(
+        f"Failed to parse LLM response as valid PlannerDecomposition: {response_content[:200]}"
+    )
 
 
 def _token_overlap(query: str, text: str) -> float:
@@ -83,8 +88,8 @@ def _token_overlap(query: str, text: str) -> float:
     if not query or not text:
         return 0.0
 
-    query_tokens = set(re.findall(r'\w+', query.lower()))
-    text_tokens = set(re.findall(r'\w+', text.lower()))
+    query_tokens = set(re.findall(r"\w+", query.lower()))
+    text_tokens = set(re.findall(r"\w+", text.lower()))
 
     if not query_tokens:
         return 0.0
@@ -93,7 +98,9 @@ def _token_overlap(query: str, text: str) -> float:
     return len(overlap) / len(query_tokens)
 
 
-def _heuristic_validate(sub_query: str, research_result: "ResearchResult") -> ValidationOutcome | None:
+def _heuristic_validate(
+    sub_query: str, research_result: "ResearchResult"
+) -> ValidationOutcome | None:
     """Heuristic-first validation of research output.
 
     Returns ValidationOutcome if a clear decision can be made, None if ambiguous.
@@ -162,7 +169,9 @@ def _suggest_revised_query(original_query: str, failure_reason: str) -> str:
     return original_query + " paper"
 
 
-async def _llm_judge_validate(sub_query: str, research_result: "ResearchResult") -> ValidationOutcome:
+async def _llm_judge_validate(
+    sub_query: str, research_result: "ResearchResult"
+) -> ValidationOutcome:
     """LLM-judge validation fallback for ambiguous cases.
 
     Uses structured output with the same fallback-parse pattern as decompose_goal.
@@ -172,9 +181,7 @@ async def _llm_judge_validate(sub_query: str, research_result: "ResearchResult")
     # Prepare paper summaries for the LLM
     paper_summaries = []
     for i, paper in enumerate(research_result.papers[:5]):  # Limit to first 5
-        paper_summaries.append(
-            f"Paper {i+1}: {paper.title}\nAbstract: {paper.abstract[:300]}..."
-        )
+        paper_summaries.append(f"Paper {i + 1}: {paper.title}\nAbstract: {paper.abstract[:300]}...")
 
     papers_text = "\n\n".join(paper_summaries) if paper_summaries else "No papers returned."
 
@@ -201,10 +208,12 @@ Judge the relevance and provide the JSON output."""
     # First attempt: structured output
     structured_llm = llm.with_structured_output(ValidationOutcome)
     try:
-        result = await structured_llm.ainvoke([
-            ("system", system_prompt),
-            ("human", human_prompt),
-        ])
+        result = await structured_llm.ainvoke(
+            [
+                ("system", system_prompt),
+                ("human", human_prompt),
+            ]
+        )
         if isinstance(result, ValidationOutcome):
             logger.info("LLM judge validation succeeded (structured output)")
             return result
@@ -217,10 +226,12 @@ Judge the relevance and provide the JSON output."""
 
     for attempt in range(max_retries):
         try:
-            response = await llm.ainvoke([
-                ("system", system_prompt),
-                ("human", human_prompt),
-            ])
+            response = await llm.ainvoke(
+                [
+                    ("system", system_prompt),
+                    ("human", human_prompt),
+                ]
+            )
             content = response.content if hasattr(response, "content") else str(response)
             content_str = content if isinstance(content, str) else json.dumps(content)
 
@@ -248,7 +259,9 @@ Judge the relevance and provide the JSON output."""
     )
 
 
-async def validate_research_output(sub_query: str, research_result: "ResearchResult") -> ValidationOutcome:
+async def validate_research_output(
+    sub_query: str, research_result: "ResearchResult"
+) -> ValidationOutcome:
     """Validate research output for a sub-query.
 
     Heuristic-first approach:
@@ -266,7 +279,9 @@ async def validate_research_output(sub_query: str, research_result: "ResearchRes
     # Heuristic checks
     heuristic_result = _heuristic_validate(sub_query, research_result)
     if heuristic_result is not None:
-        logger.info(f"Heuristic validation: {heuristic_result.is_valid} - {heuristic_result.reason}")
+        logger.info(
+            f"Heuristic validation: {heuristic_result.is_valid} - {heuristic_result.reason}"
+        )
         return heuristic_result
 
     # Ambiguous case: fall back to LLM judge

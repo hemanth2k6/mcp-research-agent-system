@@ -156,6 +156,7 @@ async def test_rate_limit_delay(settings):
         mock_get.return_value = mock_response
 
         import time
+
         start = time.monotonic()
         await client.search(query="test")
         await client.search(query="test")

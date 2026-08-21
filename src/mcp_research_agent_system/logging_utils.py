@@ -83,6 +83,7 @@ def log_tool_error(tool_name: str, error: str, input_data: dict[str, Any]) -> No
 
 # --- Agent node logging helpers ---
 
+
 def log_node_entry(node_name: str, state_snapshot: dict[str, Any]) -> float:
     """Log node entry event and return start time for duration calculation.
 
@@ -105,7 +106,9 @@ def log_node_entry(node_name: str, state_snapshot: dict[str, Any]) -> float:
     return start_time
 
 
-def log_node_exit(node_name: str, state_snapshot: dict[str, Any], start_time: float, status: str = "success") -> None:
+def log_node_exit(
+    node_name: str, state_snapshot: dict[str, Any], start_time: float, status: str = "success"
+) -> None:
     """Log node exit event with duration.
 
     Args:
@@ -126,7 +129,9 @@ def log_node_exit(node_name: str, state_snapshot: dict[str, Any], start_time: fl
     )
 
 
-def log_node_error(node_name: str, error: str, state_snapshot: dict[str, Any], start_time: float) -> None:
+def log_node_error(
+    node_name: str, error: str, state_snapshot: dict[str, Any], start_time: float
+) -> None:
     """Log node error event with duration."""
     duration_ms = (time.monotonic() - start_time) * 1000
     log_event(
@@ -140,7 +145,9 @@ def log_node_error(node_name: str, error: str, state_snapshot: dict[str, Any], s
     )
 
 
-def safe_state_snapshot(state: dict[str, Any], include_keys: list[str] | None = None) -> dict[str, Any]:
+def safe_state_snapshot(
+    state: dict[str, Any], include_keys: list[str] | None = None
+) -> dict[str, Any]:
     """Extract a safe subset of state for logging (avoids huge objects).
 
     Args:

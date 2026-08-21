@@ -15,8 +15,16 @@ from mcp_research_agent_system.trace_viewer import (
 def test_load_trace_valid_jsonl():
     """Test loading valid JSONL trace file."""
     events = [
-        {"timestamp": "2024-01-01T12:00:00.000Z", "event_type": "node_entry", "payload": {"node_name": "planner"}},
-        {"timestamp": "2024-01-01T12:00:01.000Z", "event_type": "node_exit", "payload": {"node_name": "planner", "duration_ms": 500.0}},
+        {
+            "timestamp": "2024-01-01T12:00:00.000Z",
+            "event_type": "node_entry",
+            "payload": {"node_name": "planner"},
+        },
+        {
+            "timestamp": "2024-01-01T12:00:01.000Z",
+            "event_type": "node_exit",
+            "payload": {"node_name": "planner", "duration_ms": 500.0},
+        },
     ]
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
@@ -60,7 +68,7 @@ def test_load_trace_handles_invalid_json():
     """Test that invalid JSON lines are skipped with warning."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
         f.write('{"valid": "json"}\n')
-        f.write('not valid json\n')
+        f.write("not valid json\n")
         f.write('{"also": "valid"}\n')
         temp_path = f.name
 
@@ -212,4 +220,5 @@ def test_format_event_rich_returns_tuple():
 
 if __name__ == "__main__":
     import pytest
+
     pytest.main([__file__, "-v"])

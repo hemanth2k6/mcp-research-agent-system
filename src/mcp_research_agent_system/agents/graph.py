@@ -22,7 +22,9 @@ def planner_node(state: ResearchState) -> ResearchState:
     """Planner node — decomposes the research goal into sub-queries on first entry."""
     start_time = logging_utils.log_node_entry(
         "planner",
-        logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["research_goal", "sub_queries"]),
+        logging_utils.safe_state_snapshot(
+            cast(dict[str, Any], state), ["research_goal", "sub_queries"]
+        ),
     )
 
     research_goal = state.get("research_goal", "")
@@ -90,7 +92,9 @@ async def researcher_node(state: ResearchState) -> ResearchState:
         logging_utils.log_node_error(
             "researcher",
             "No sub-query available at current index",
-            logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["current_query_index", "sub_queries"]),
+            logging_utils.safe_state_snapshot(
+                cast(dict[str, Any], state), ["current_query_index", "sub_queries"]
+            ),
             start_time,
         )
         return {
@@ -127,7 +131,9 @@ async def researcher_node(state: ResearchState) -> ResearchState:
         logging_utils.log_node_error(
             "researcher",
             str(e),
-            logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["current_query_index", "query"]),
+            logging_utils.safe_state_snapshot(
+                cast(dict[str, Any], state), ["current_query_index", "query"]
+            ),
             start_time,
         )
         return {
@@ -175,7 +181,9 @@ async def validator_node(state: ResearchState) -> ResearchState:
         logging_utils.log_node_error(
             "validator",
             "No sub-query available at current index",
-            logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["current_query_index", "sub_queries"]),
+            logging_utils.safe_state_snapshot(
+                cast(dict[str, Any], state), ["current_query_index", "sub_queries"]
+            ),
             start_time,
         )
         return {
@@ -332,7 +340,9 @@ async def synthesizer_node(state: ResearchState) -> ResearchState:
         logging_utils.log_node_error(
             "synthesizer",
             str(e),
-            logging_utils.safe_state_snapshot(cast(dict[str, Any], state), ["validated_findings", "research_goal"]),
+            logging_utils.safe_state_snapshot(
+                cast(dict[str, Any], state), ["validated_findings", "research_goal"]
+            ),
             start_time,
         )
         raise

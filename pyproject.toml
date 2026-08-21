@@ -59,7 +59,7 @@ ignore = [
     "E501", # line too long (handled by line-length)
     "B008", # do not perform function calls in argument defaults (pydantic validators)
 ]
-per-file-ignores = { "tests/*" = ["T201", "S101"] }
+per-file-ignores = { "tests/*" = ["T201", "S101"], "src/mcp_research_agent_system/trace_viewer.py" = ["T201"] }
 
 [tool.ruff.format]
 quote-style = "double"

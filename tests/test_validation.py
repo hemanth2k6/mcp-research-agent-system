@@ -133,16 +133,16 @@ class TestLLMJudgeFallback:
         # Mock the LLM judge to return valid
         mock_llm = AsyncMock(spec=ChatOpenAI)
         mock_structured = AsyncMock()
-        mock_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
-            is_valid=True,
-            reason="Papers are relevant to graph neural networks and chemistry",
-            revised_query=None,
-        ))
+        mock_structured.ainvoke = AsyncMock(
+            return_value=ValidationOutcome(
+                is_valid=True,
+                reason="Papers are relevant to graph neural networks and chemistry",
+                revised_query=None,
+            )
+        )
         mock_llm.with_structured_output.return_value = mock_structured
 
-        with patch(
-            "mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm
-        ):
+        with patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm):
             outcome = await validate_research_output(sub_query, result)
 
         assert outcome.is_valid is True
@@ -166,16 +166,16 @@ class TestLLMJudgeFallback:
         # Mock the LLM judge to return invalid
         mock_llm = AsyncMock(spec=ChatOpenAI)
         mock_structured = AsyncMock()
-        mock_structured.ainvoke = AsyncMock(return_value=ValidationOutcome(
-            is_valid=False,
-            reason="Papers are tangentially related but not directly about molecular property prediction",
-            revised_query="graph neural networks molecular property prediction drug discovery",
-        ))
+        mock_structured.ainvoke = AsyncMock(
+            return_value=ValidationOutcome(
+                is_valid=False,
+                reason="Papers are tangentially related but not directly about molecular property prediction",
+                revised_query="graph neural networks molecular property prediction drug discovery",
+            )
+        )
         mock_llm.with_structured_output.return_value = mock_structured
 
-        with patch(
-            "mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm
-        ):
+        with patch("mcp_research_agent_system.agents.planner.get_llm", return_value=mock_llm):
             outcome = await validate_research_output(sub_query, result)
 
         assert outcome.is_valid is False
@@ -218,24 +218,27 @@ class TestValidatorNodeIntegration:
 
         # Mock synthesizer LLM
         from mcp_research_agent_system.agents.synthesizer import SynthesizedReport
+
         mock_synthesizer_structured = AsyncMock()
-        mock_synthesizer_structured.ainvoke = AsyncMock(return_value=SynthesizedReport(
-            report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
-        ))
+        mock_synthesizer_structured.ainvoke = AsyncMock(
+            return_value=SynthesizedReport(
+                report="# Test Report\n\n## Overview\nTest\n\n## Key Themes\nTheme 1\n\n## Notable Papers\nPaper 1\n\n## Gaps / Open Questions\nGap 1"
+            )
+        )
 
         def synthesizer_get_llm():
             mock_llm = MagicMock()
             mock_llm.with_structured_output = MagicMock(return_value=mock_synthesizer_structured)
             return mock_llm
 
-        with patch(
-            "mcp_research_agent_system.agents.graph.run_research", run_research_mock
-        ), patch(
-            "mcp_research_agent_system.agents.graph.decompose_goal"
-        ) as mock_decompose, patch(
-            "mcp_research_agent_system.agents.graph.logging_utils"
-        ) as mock_log, patch(
-            "mcp_research_agent_system.agents.synthesizer.get_llm", side_effect=synthesizer_get_llm
+        with (
+            patch("mcp_research_agent_system.agents.graph.run_research", run_research_mock),
+            patch("mcp_research_agent_system.agents.graph.decompose_goal") as mock_decompose,
+            patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
+            patch(
+                "mcp_research_agent_system.agents.synthesizer.get_llm",
+                side_effect=synthesizer_get_llm,
+            ),
         ):
             mock_log.log_event = MagicMock()
             mock_log.log_node_entry = MagicMock(return_value=0.0)
@@ -270,13 +273,11 @@ class TestValidatorNodeIntegration:
 
         run_research_mock = AsyncMock(return_value=bad_result)
 
-        with patch(
-            "mcp_research_agent_system.agents.graph.run_research", run_research_mock
-        ), patch(
-            "mcp_research_agent_system.agents.graph.decompose_goal"
-        ) as mock_decompose, patch(
-            "mcp_research_agent_system.agents.graph.logging_utils"
-        ) as mock_log:
+        with (
+            patch("mcp_research_agent_system.agents.graph.run_research", run_research_mock),
+            patch("mcp_research_agent_system.agents.graph.decompose_goal") as mock_decompose,
+            patch("mcp_research_agent_system.agents.graph.logging_utils") as mock_log,
+        ):
             mock_log.log_event = MagicMock()
             mock_log.log_node_entry = MagicMock(return_value=0.0)
             mock_log.log_node_exit = MagicMock()
@@ -300,7 +301,8 @@ class TestValidatorNodeIntegration:
         # so "invalid_exhausted" is not logged. Verify graph proceeds to synthesizer.
         # The validator logs "invalid_retry" for the final retry, then router goes to synthesizer
         validator_exits = [
-            call.kwargs.get("status") for call in mock_log.log_node_exit.call_args_list
+            call.kwargs.get("status")
+            for call in mock_log.log_node_exit.call_args_list
             if call.args[0] == "validator"
         ]
         # All validator exits should be "invalid_retry" (never "invalid_exhausted" in current flow)

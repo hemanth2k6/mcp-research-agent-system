@@ -121,8 +121,9 @@ async def test_list_tools(server_params):
 @pytest.mark.asyncio
 async def test_search_papers_success(test_settings, sample_papers):
     """Test search_papers tool returns papers when cached_search succeeds."""
-    with patch.object(server_module, "Settings", return_value=test_settings), patch.object(
-        server_module, "cached_search", new=AsyncMock(return_value=sample_papers)
+    with (
+        patch.object(server_module, "Settings", return_value=test_settings),
+        patch.object(server_module, "cached_search", new=AsyncMock(return_value=sample_papers)),
     ):
         result = await TOOL_HANDLERS["search_papers"](
             {
@@ -145,12 +146,11 @@ async def test_search_papers_success(test_settings, sample_papers):
 @pytest.mark.asyncio
 async def test_search_papers_empty_result(test_settings):
     """Test search_papers returns empty list when no papers found."""
-    with patch.object(server_module, "Settings", return_value=test_settings), patch.object(
-        server_module, "cached_search", new=AsyncMock(return_value=[])
+    with (
+        patch.object(server_module, "Settings", return_value=test_settings),
+        patch.object(server_module, "cached_search", new=AsyncMock(return_value=[])),
     ):
-        result = await TOOL_HANDLERS["search_papers"](
-            {"query": "nonexistent topic xyz123"}
-        )
+        result = await TOOL_HANDLERS["search_papers"]({"query": "nonexistent topic xyz123"})
 
     assert not result.is_error
     assert result.structured_content is not None
@@ -182,9 +182,7 @@ async def test_search_papers_invalid_date():
 async def test_search_papers_max_results_validation():
     """Test search_papers validates max_results bounds."""
     # Too high
-    result = await TOOL_HANDLERS["search_papers"](
-        {"query": "test", "max_results": 200}
-    )
+    result = await TOOL_HANDLERS["search_papers"]({"query": "test", "max_results": 200})
     assert result.is_error
     assert "Invalid input" in result.content[0].text
 
@@ -201,8 +199,9 @@ async def test_search_papers_exception_handling(test_settings):
     async def failing_search(*args, **kwargs):
         raise Exception("API connection failed")
 
-    with patch.object(server_module, "Settings", return_value=test_settings), patch.object(
-        server_module, "cached_search", new=failing_search
+    with (
+        patch.object(server_module, "Settings", return_value=test_settings),
+        patch.object(server_module, "cached_search", new=failing_search),
     ):
         result = await TOOL_HANDLERS["search_papers"]({"query": "test"})
 
@@ -220,9 +219,7 @@ async def test_get_paper_details_found(test_settings, sample_papers):
             _upsert_paper(conn, paper, datetime.now(UTC).isoformat())
 
     with patch.object(server_module, "Settings", return_value=test_settings):
-        result = await TOOL_HANDLERS["get_paper_details"](
-            {"arxiv_id": "2401.12345v1"}
-        )
+        result = await TOOL_HANDLERS["get_paper_details"]({"arxiv_id": "2401.12345v1"})
 
     assert not result.is_error
     assert result.structured_content is not None
@@ -238,9 +235,7 @@ async def test_get_paper_details_not_found(test_settings):
     init_db(test_settings)
 
     with patch.object(server_module, "Settings", return_value=test_settings):
-        result = await TOOL_HANDLERS["get_paper_details"](
-            {"arxiv_id": "9999.99999v1"}
-        )
+        result = await TOOL_HANDLERS["get_paper_details"]({"arxiv_id": "9999.99999v1"})
 
     assert not result.is_error
     assert result.structured_content is not None
@@ -277,9 +272,7 @@ async def test_get_cached_summary_matches(test_settings, sample_papers, mock_arx
     )
 
     with patch.object(server_module, "Settings", return_value=test_settings):
-        result = await TOOL_HANDLERS["get_cached_summary"](
-            {"topic": "machine learning"}
-        )
+        result = await TOOL_HANDLERS["get_cached_summary"]({"topic": "machine learning"})
 
     assert not result.is_error
     assert result.structured_content is not None
@@ -295,9 +288,7 @@ async def test_get_cached_summary_no_matches(test_settings):
     init_db(test_settings)
 
     with patch.object(server_module, "Settings", return_value=test_settings):
-        result = await TOOL_HANDLERS["get_cached_summary"](
-            {"topic": "nonexistent topic xyz123"}
-        )
+        result = await TOOL_HANDLERS["get_cached_summary"]({"topic": "nonexistent topic xyz123"})
 
     assert not result.is_error
     assert result.structured_content is not None
