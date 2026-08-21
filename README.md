@@ -1,5 +1,7 @@
 # MCP Research Agent System
 
+![CI](https://github.com/hemanth2k6/mcp-research-agent-system/actions/workflows/ci.yml/badge.svg)
+
 A production-quality multi-agent research system with an arXiv MCP server and LangGraph-based research agents.
 
 ## Architecture
