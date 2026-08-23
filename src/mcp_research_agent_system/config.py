@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     log_file: str = "logs/app.log"
 
     # LLM (OpenAI-compatible)
-    llm_base_url: str = "http://localhost:20128/v1"
-    llm_api_key: str = "your-api-key-here"
-    llm_model: str = "gpt-4o-mini"
+    # Tested default: Gemini (https://generativelanguage.googleapis.com/v1beta/openai/, gemini-3.5-flash)
+    # Any OpenAI-compatible endpoint works; configure via LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
+    llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    llm_api_key: str = "your-gemini-api-key-here"
+    llm_model: str = "gemini-3.6-flash"

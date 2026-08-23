@@ -42,10 +42,10 @@ jobs:
         run: |
           pytest -v --tb=short
         env:
-          # Ensure no real network calls in CI
+          # Ensure no real network calls in CI - use dummy values that won't make real calls
           LLM_API_KEY: "dummy-key-for-ci"
           LLM_BASE_URL: "http://localhost:20128/v1"
-          LLM_MODEL: "gpt-4o-mini"
+          LLM_MODEL: "gemini-3.5-flash"
           RESEARCH_AGENT_DB_PATH: ":memory:"
           LOG_DIR: "/tmp/logs"
 
@@ -56,6 +56,6 @@ jobs:
       #   env:
       #     LLM_API_KEY: "dummy-key-for-ci"
       #     LLM_BASE_URL: "http://localhost:20128/v1"
-      #     LLM_MODEL: "gpt-4o-mini"
+      #     LLM_MODEL: "gemini-3.5-flash"
       #     RESEARCH_AGENT_DB_PATH: ":memory:"
       #     LOG_DIR: "/tmp/logs"

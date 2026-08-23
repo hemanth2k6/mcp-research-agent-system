@@ -47,7 +47,7 @@ graph TD
 | **Heuristic-first validation + LLM-judge fallback** | Avoids LLM cost/latency for obvious failures (empty results, clear off-topic). LLM only invoked on ambiguous cases. | Heuristics can be fooled by adversarial/edge cases; LLM judge adds a safety net. |
 | **Retry loop with query revision (max 3)** | Self-correcting: validator suggests a refined query, researcher retries. Prevents dead ends from poor initial decomposition. | Increases total runtime (up to 3× researcher calls per sub-query). Bounded by `MAX_RESEARCHER_ATTEMPTS=3`. |
 | **SQLite caching layer** | arXiv API has rate limits; repeated queries for same topic across retries/runs benefit from local cache. | Cache invalidation is manual (TTL-based); stale summaries possible if papers updated. |
-| **Provider-agnostic LLM client (`get_llm`)** | Works with any OpenAI-compatible endpoint (OmniRoute, vLLM, OpenAI, Gemini, Ollama). Configured via `OPENAI_BASE_URL` + `OPENAI_API_KEY`. | Requires endpoint to support structured output (`with_structured_output`). |
+| **Provider-agnostic LLM client (`get_llm`)** | Works with any OpenAI-compatible endpoint (OmniRoute, vLLM, OpenAI, Gemini, Ollama). Configured via `LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL`. Tested default: Gemini (`https://generativelanguage.googleapis.com/v1beta/openai/`, `gemini-3.5-flash`). | Requires endpoint to support structured output (`with_structured_output`). |
 | **Structured JSONL tracing** | Every node entry/exit, tool call, and error logged as JSONL to `logs/trace.jsonl`. Enables debugging, replay, and observability. | Log files grow unbounded; no built-in rotation (add logrotate or similar for production). |
 | **Typed state via TypedDict** | LangGraph state is fully typed (`ResearchState`), catching key errors at mypy time. | Boilerplate for state updates; `create_initial_state` factory helps. |
 | **Pydantic v2 for all schemas** | Runtime validation of LLM outputs, tool inputs, and MCP tool results. Fail-fast on schema violations. | Slight overhead vs. raw dicts; worth it for correctness. |
@@ -71,9 +71,10 @@ cd mcp-research-agent-system
 pip install -e ".[dev]"
 
 # Configure LLM endpoint (any OpenAI-compatible API)
-export OPENAI_BASE_URL="https://your-endpoint.example.com/v1"
-export OPENAI_API_KEY="your-api-key"
-export OPENAI_MODEL="gpt-4o-mini"  # or your model of choice
+# Tested default: Gemini
+export LLM_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai/"
+export LLM_API_KEY="your-gemini-api-key-here"
+export LLM_MODEL="gemini-3.5-flash"  # or your model of choice
 ```
 
 ### Run a Research Query
@@ -95,12 +96,25 @@ research-agent "graph neural networks for drug discovery" -o report.md
 # Build image
 docker build -t mcp-research-agent .
 
-# Run (pass env vars for LLM)
+# Run with docker run (pass env vars, or use .env file)
 docker run --rm \
-  -e OPENAI_BASE_URL \
-  -e OPENAI_API_KEY \
-  -e OPENAI_MODEL \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
   mcp-research-agent "your research goal"
+
+# Verbose mode
+docker run --rm \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  mcp-research-agent "your research goal" --verbose
+
+# Or with docker compose (loads .env automatically)
+docker compose run --rm research-agent "your research goal"
+
+# Verbose with docker compose
+docker compose run --rm research-agent "your research goal" --verbose
 ```
 
 ---
@@ -284,11 +298,11 @@ All settings via environment variables (`.env` supported via `python-dotenv`):
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENAI_BASE_URL` | Yes | — | OpenAI-compatible API base URL |
-| `OPENAI_API_KEY` | Yes | — | API key for LLM endpoint |
-| `OPENAI_MODEL` | No | `gpt-4o-mini` | Model name for all LLM calls |
+| `LLM_BASE_URL` | Yes | — | OpenAI-compatible API base URL (tested: `https://generativelanguage.googleapis.com/v1beta/openai/`) |
+| `LLM_API_KEY` | Yes | — | API key for LLM endpoint (opaque string; no assumed prefix/format) |
+| `LLM_MODEL` | No | `gemini-3.5-flash` | Model name for all LLM calls |
 | `ARXIV_RATE_LIMIT_DELAY` | No | `3.0` | Seconds between arXiv API requests |
-| `CACHE_DB_PATH` | No | `cache.db` | SQLite database path |
+| `CACHE_DB_PATH` | No | `data/research_agent.db` | SQLite database path |
 | `LOG_DIR` | No | `logs` | Directory for JSONL traces |
 
 ---
