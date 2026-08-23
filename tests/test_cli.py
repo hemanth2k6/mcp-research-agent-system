@@ -75,29 +75,25 @@ class TestRunPipeline:
 
     @pytest.mark.asyncio
     async def test_success_path_verbose(self) -> None:
-        """Test successful pipeline with verbose streaming."""
+        """Test successful pipeline with verbose streaming uses astream only (no ainvoke)."""
         mock_graph = AsyncMock()
 
-        # Simulate streaming events
+        # Simulate streaming events in "values" mode (full state after each node)
         async def astream(state, stream_mode):
+            assert stream_mode == "values"
             events = [
-                {"planner": {"sub_queries": ["q1", "q2"]}},
-                {"researcher": {"current_query_index": 0, "researcher_output": [{"paper": "p1"}]}},
-                {
-                    "validator": {
-                        "validation_status": "valid",
-                        "validated_findings": [{"paper": "p1"}],
-                    }
-                },
-                {"synthesizer": {"final_report": "# Report"}},
+                {"sub_queries": ["q1", "q2"], "research_goal": "test goal"},
+                {"sub_queries": ["q1", "q2"], "research_goal": "test goal", "current_query_index": 0, "researcher_output": [{"paper": "p1"}]},
+                {"sub_queries": ["q1", "q2"], "research_goal": "test goal", "validation_status": "valid", "validated_findings": [{"paper": "p1"}], "current_query_index": 1},
+                {"sub_queries": ["q1", "q2"], "research_goal": "test goal", "validation_status": "valid", "validated_findings": [{"paper": "p1"}], "current_query_index": 1, "researcher_output": [{"paper": "p2"}]},
+                {"sub_queries": ["q1", "q2"], "research_goal": "test goal", "validation_status": "valid", "validated_findings": [{"paper": "p1"}, {"paper": "p2"}], "current_query_index": 2},
+                {"final_report": "# Final Report", "error": None, "validated_findings": [{"paper": "p1"}, {"paper": "p2"}]},
             ]
             for e in events:
                 yield e
 
         mock_graph.astream = astream
-        mock_graph.ainvoke = AsyncMock(
-            return_value={"final_report": "# Final Report", "error": None}
-        )
+        mock_graph.ainvoke = AsyncMock()
 
         with patch("mcp_research_agent_system.cli.build_graph", return_value=mock_graph):
             with patch("mcp_research_agent_system.cli.configure_logging"):
@@ -105,6 +101,53 @@ class TestRunPipeline:
                     report = await run_pipeline("test goal", verbose=True)
 
         assert report == "# Final Report"
+        # Critical: astream was used, ainvoke should NOT be called in verbose mode
+        mock_graph.ainvoke.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_verbose_mode_graph_invoked_once(self) -> None:
+        """Regression test: graph should be invoked exactly ONCE in verbose mode (no duplicate astream+ainvoke)."""
+        call_log = {"astream_count": 0, "ainvoke_count": 0}
+        mock_graph = AsyncMock()
+
+        async def astream(state, stream_mode):
+            call_log["astream_count"] += 1
+            assert stream_mode == "values"
+            events = [
+                {"sub_queries": ["q1"], "research_goal": "test goal"},
+                {"final_report": "# Report", "error": None},
+            ]
+            for e in events:
+                yield e
+
+        async def ainvoke(state):
+            call_log["ainvoke_count"] += 1
+            return {"final_report": "# Report", "error": None}
+
+        mock_graph.astream = astream
+        mock_graph.ainvoke = ainvoke
+
+        with patch("mcp_research_agent_system.cli.build_graph", return_value=mock_graph):
+            with patch("mcp_research_agent_system.cli.configure_logging"):
+                with patch("mcp_research_agent_system.cli.get_log_dir", return_value=Path("logs")):
+                    await run_pipeline("test goal", verbose=True)
+
+        # Graph should be executed exactly once total (via astream), not twice
+        assert call_log["astream_count"] == 1, f"astream called {call_log['astream_count']} times, expected 1"
+        assert call_log["ainvoke_count"] == 0, f"ainvoke called {call_log['ainvoke_count']} times in verbose mode, expected 0 (would indicate double execution)"
+
+        # Also verify non-verbose mode still uses ainvoke exactly once
+        call_log = {"astream_count": 0, "ainvoke_count": 0}
+        mock_graph.ainvoke = ainvoke
+        mock_graph.astream = astream
+
+        with patch("mcp_research_agent_system.cli.build_graph", return_value=mock_graph):
+            with patch("mcp_research_agent_system.cli.configure_logging"):
+                with patch("mcp_research_agent_system.cli.get_log_dir", return_value=Path("logs")):
+                    await run_pipeline("test goal", verbose=False)
+
+        assert call_log["astream_count"] == 0, f"astream called {call_log['astream_count']} times in non-verbose mode, expected 0"
+        assert call_log["ainvoke_count"] == 1, f"ainvoke called {call_log['ainvoke_count']} times in non-verbose mode, expected 1"
 
     @pytest.mark.asyncio
     async def test_planner_error(self) -> None:

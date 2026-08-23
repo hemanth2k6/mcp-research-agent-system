@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import sys
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -90,72 +91,79 @@ async def run_pipeline(goal: str, verbose: bool = False) -> str:
 
     # Invoke the graph
     try:
-        # Use astream for verbose progress tracking
+        final_state: dict[str, Any] = {}
+
         if verbose:
-            # Stream through the graph to show progress
-            async for event in graph.astream(initial_state, stream_mode="updates"):
-                for node_name, node_output in event.items():
-                    if node_name == "planner":
-                        sub_queries = node_output.get("sub_queries", [])
+            # Stream through the graph to show progress using "values" mode
+            # which yields the complete state after each node, avoiding a
+            # second graph invocation that "updates" mode would require.
+            async for event in graph.astream(initial_state, stream_mode="values"):
+                # Each event is the full state after a node completes.
+                # Keep track of the latest state for final extraction.
+                final_state = event
+
+                # Print verbose progress based on which node just completed
+                # by detecting what changed in the state
+                if "sub_queries" in event and event["sub_queries"]:
+                    # Planner just ran
+                    sub_queries = event["sub_queries"]
+                    print_verbose_step(
+                        console,
+                        "planner",
+                        "success",
+                        f"Generated {len(sub_queries)} sub-queries: {', '.join(sub_queries[:3])}{'...' if len(sub_queries) > 3 else ''}",
+                    )
+                elif "researcher_output" in event:
+                    # Researcher just ran
+                    idx = event.get("current_query_index", 0)
+                    sub_queries = event.get("sub_queries", [])
+                    query = sub_queries[idx] if idx < len(sub_queries) else ""
+                    attempts = event.get("researcher_attempts", 0)
+                    researcher_output = event.get("researcher_output", [])
+                    print_verbose_step(
+                        console,
+                        "researcher",
+                        "success" if researcher_output else "retry",
+                        f"Query {idx + 1}: {query[:60]}... (attempt {attempts + 1}, {len(researcher_output)} papers)",
+                    )
+                elif "validation_status" in event:
+                    # Validator just ran
+                    status = event.get("validation_status", "pending")
+                    attempts = event.get("researcher_attempts", 0)
+                    if status == "valid":
+                        validated_count = len(event.get("validated_findings", []))
                         print_verbose_step(
                             console,
-                            "planner",
+                            "validator",
                             "success",
-                            f"Generated {len(sub_queries)} sub-queries: {', '.join(sub_queries[:3])}{'...' if len(sub_queries) > 3 else ''}",
+                            f"Validation passed (total validated: {validated_count})",
                         )
-                    elif node_name == "researcher":
-                        idx = node_output.get("current_query_index", 0)
-                        query = (
-                            node_output.get("sub_queries", [""])[idx]
-                            if idx < len(node_output.get("sub_queries", []))
-                            else ""
-                        )
-                        attempts = node_output.get("researcher_attempts", 0)
-                        researcher_output = node_output.get("researcher_output", [])
-                        print_verbose_step(
-                            console,
-                            "researcher",
-                            "success" if researcher_output else "retry",
-                            f"Query {idx + 1}: {query[:60]}... (attempt {attempts + 1}, {len(researcher_output)} papers)",
-                        )
-                    elif node_name == "validator":
-                        status = node_output.get("validation_status", "pending")
-                        attempts = node_output.get("researcher_attempts", 0)
-                        if status == "valid":
-                            validated_count = len(node_output.get("validated_findings", []))
+                    elif status == "invalid":
+                        if attempts < 3:
                             print_verbose_step(
                                 console,
                                 "validator",
-                                "success",
-                                f"Validation passed (total validated: {validated_count})",
+                                "retry",
+                                f"Validation failed, retrying (attempt {attempts + 1}/3)",
                             )
-                        elif status == "invalid":
-                            if attempts < 3:
-                                print_verbose_step(
-                                    console,
-                                    "validator",
-                                    "retry",
-                                    f"Validation failed, retrying (attempt {attempts + 1}/3)",
-                                )
-                            else:
-                                print_verbose_step(
-                                    console,
-                                    "validator",
-                                    "error",
-                                    f"Validation exhausted after {attempts} attempts",
-                                )
-                    elif node_name == "synthesizer":
-                        synth_report = node_output.get("final_report")
-                        print_verbose_step(
-                            console,
-                            "synthesizer",
-                            "success",
-                            f"Report generated ({len(synth_report)} chars)"
-                            if synth_report
-                            else "No report generated",
-                        )
-            # Get final state after streaming
-            final_state = await graph.ainvoke(initial_state)
+                        else:
+                            print_verbose_step(
+                                console,
+                                "validator",
+                                "error",
+                                f"Validation exhausted after {attempts} attempts",
+                            )
+                elif "final_report" in event:
+                    # Synthesizer just ran
+                    synth_report = event.get("final_report")
+                    print_verbose_step(
+                        console,
+                        "synthesizer",
+                        "success",
+                        f"Report generated ({len(synth_report)} chars)"
+                        if synth_report
+                        else "No report generated",
+                    )
         else:
             # Simple invoke without verbose progress
             final_state = await graph.ainvoke(initial_state)
