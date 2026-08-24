@@ -83,11 +83,39 @@ class TestRunPipeline:
             assert stream_mode == "values"
             events = [
                 {"sub_queries": ["q1", "q2"], "research_goal": "test goal"},
-                {"sub_queries": ["q1", "q2"], "research_goal": "test goal", "current_query_index": 0, "researcher_output": [{"paper": "p1"}]},
-                {"sub_queries": ["q1", "q2"], "research_goal": "test goal", "validation_status": "valid", "validated_findings": [{"paper": "p1"}], "current_query_index": 1},
-                {"sub_queries": ["q1", "q2"], "research_goal": "test goal", "validation_status": "valid", "validated_findings": [{"paper": "p1"}], "current_query_index": 1, "researcher_output": [{"paper": "p2"}]},
-                {"sub_queries": ["q1", "q2"], "research_goal": "test goal", "validation_status": "valid", "validated_findings": [{"paper": "p1"}, {"paper": "p2"}], "current_query_index": 2},
-                {"final_report": "# Final Report", "error": None, "validated_findings": [{"paper": "p1"}, {"paper": "p2"}]},
+                {
+                    "sub_queries": ["q1", "q2"],
+                    "research_goal": "test goal",
+                    "current_query_index": 0,
+                    "researcher_output": [{"paper": "p1"}],
+                },
+                {
+                    "sub_queries": ["q1", "q2"],
+                    "research_goal": "test goal",
+                    "validation_status": "valid",
+                    "validated_findings": [{"paper": "p1"}],
+                    "current_query_index": 1,
+                },
+                {
+                    "sub_queries": ["q1", "q2"],
+                    "research_goal": "test goal",
+                    "validation_status": "valid",
+                    "validated_findings": [{"paper": "p1"}],
+                    "current_query_index": 1,
+                    "researcher_output": [{"paper": "p2"}],
+                },
+                {
+                    "sub_queries": ["q1", "q2"],
+                    "research_goal": "test goal",
+                    "validation_status": "valid",
+                    "validated_findings": [{"paper": "p1"}, {"paper": "p2"}],
+                    "current_query_index": 2,
+                },
+                {
+                    "final_report": "# Final Report",
+                    "error": None,
+                    "validated_findings": [{"paper": "p1"}, {"paper": "p2"}],
+                },
             ]
             for e in events:
                 yield e
@@ -133,8 +161,12 @@ class TestRunPipeline:
                     await run_pipeline("test goal", verbose=True)
 
         # Graph should be executed exactly once total (via astream), not twice
-        assert call_log["astream_count"] == 1, f"astream called {call_log['astream_count']} times, expected 1"
-        assert call_log["ainvoke_count"] == 0, f"ainvoke called {call_log['ainvoke_count']} times in verbose mode, expected 0 (would indicate double execution)"
+        assert call_log["astream_count"] == 1, (
+            f"astream called {call_log['astream_count']} times, expected 1"
+        )
+        assert call_log["ainvoke_count"] == 0, (
+            f"ainvoke called {call_log['ainvoke_count']} times in verbose mode, expected 0 (would indicate double execution)"
+        )
 
         # Also verify non-verbose mode still uses ainvoke exactly once
         call_log = {"astream_count": 0, "ainvoke_count": 0}
@@ -146,8 +178,12 @@ class TestRunPipeline:
                 with patch("mcp_research_agent_system.cli.get_log_dir", return_value=Path("logs")):
                     await run_pipeline("test goal", verbose=False)
 
-        assert call_log["astream_count"] == 0, f"astream called {call_log['astream_count']} times in non-verbose mode, expected 0"
-        assert call_log["ainvoke_count"] == 1, f"ainvoke called {call_log['ainvoke_count']} times in non-verbose mode, expected 1"
+        assert call_log["astream_count"] == 0, (
+            f"astream called {call_log['astream_count']} times in non-verbose mode, expected 0"
+        )
+        assert call_log["ainvoke_count"] == 1, (
+            f"ainvoke called {call_log['ainvoke_count']} times in non-verbose mode, expected 1"
+        )
 
     @pytest.mark.asyncio
     async def test_planner_error(self) -> None:
